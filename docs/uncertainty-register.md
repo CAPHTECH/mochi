@@ -80,7 +80,9 @@ Priority = Impact × (6 - Evidence) × Urgency ÷ Effort
 | 項目 | 内容 |
 |------|------|
 | **Hypothesis** | Qwen2.5-Coder-1.5BをQLoRAでファインチューニングすることで、特定プロジェクトのコーディングパターン（命名規則、API使用法、アーキテクチャパターン）を学習できる |
-| **Method** | 1. 中規模OSSプロジェクト（10-50kLOC）を1つ選定<br>2. 基本的なデータパイプライン（コードチャンク化→Alpaca形式）を実装<br>3. Qwen2.5-Coder-1.5BをQLoRAで学習（1-2エポック）<br>4. プロジェクト固有の補完タスクで評価（ベースモデルと比較） |
+| **Target Project** | [CAPHTECH/kiri](https://github.com/CAPHTECH/kiri) - MCP Server for code context extraction |
+| **Project Stats** | TypeScript 97.3%, src/ ~27kLOC, tests/ ~26kLOC, docs/ ~6.6k lines, 578 commits |
+| **Method** | 1. kiriリポジトリをクローン<br>2. 基本的なデータパイプライン（コードチャンク化→Alpaca形式）を実装<br>3. Qwen2.5-Coder-1.5BをQLoRAで学習（1-2エポック）<br>4. kiri固有の補完タスクで評価（ベースモデルと比較） |
 | **Timebox** | 5日 |
 | **Decision Rule** | **採用**: プロジェクト固有タスクでベースモデルより10%以上の改善<br>**部分採用**: 改善は見られるが10%未満（データ/手法の改善余地あり）<br>**棄却**: 改善なし、または劣化 |
 | **Evidence** | 学習スクリプト、評価結果（Perplexity、手動評価）、生成サンプル比較 |
@@ -167,3 +169,4 @@ Week 2:                                      ▼
 |------|---------|
 | 2026-01-10 | 初版作成、U1-U10を特定、OBS-1〜4を設計 |
 | 2026-01-10 | U8をValidated（自分がユーザー）、OBS-1をスキップ |
+| 2026-01-10 | OBS-2の対象プロジェクトをCAPHTECH/kiriに確定 |
