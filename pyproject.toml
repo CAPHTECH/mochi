@@ -19,7 +19,6 @@ dependencies = [
     "datasets>=2.18.0",
     "transformers>=4.40.0",
     "peft>=0.10.0",
-    "bitsandbytes>=0.43.0",
     "accelerate>=0.29.0",
     "trl>=0.8.0",
     "torch>=2.2.0",
@@ -28,6 +27,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+cuda = [
+    "bitsandbytes>=0.43.0",  # CUDA only - for 4-bit quantization
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
