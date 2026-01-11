@@ -1,0 +1,240 @@
+schemaVersion: "1.0.0"
+version: "v2025-01-11"
+name: "mochi-code-completion-eval"
+description: "Mochi code completion quality evaluation - TypeScript, YAML, error handling"
+
+defaultParams:
+  k: 1
+  timeoutMs: 120000
+
+queries:
+  # ============================================
+  # Category: method-completion (4 cases)
+  # ============================================
+
+  - id: "ts-method-001"
+    text: "DuckDB query - all method"
+    payload:
+      instruction: "Fill in the typescript code"
+      input: |
+        // File: src/db/client.ts
+        const users = await db.
+      context: |
+        // Available methods on DuckDBClient:
+        //   all<T>(sql: string, params?: any[]): Promise<T[]>
+        //   run(sql: string, params?: any[]): Promise<void>
+        //   prepare(sql: string): Statement
+      expectedKeywords: ["all"]
+      forbiddenKeywords: ["query", "execute", "fetch"]
+    metadata:
+      category: "method-completion"
+      language: "typescript"
+      difficulty: "easy"
+
+  - id: "ts-method-002"
+    text: "DuckDB query - run method"
+    payload:
+      instruction: "Fill in the typescript code"
+      input: |
+        // File: src/db/migration.ts
+        // Delete all inactive users
+        await db.
+      context: |
+        // Available methods on DuckDBClient:
+        //   all<T>(sql: string, params?: any[]): Promise<T[]>
+        //   run(sql: string, params?: any[]): Promise<void>
+        //   prepare(sql: string): Statement
+      expectedKeywords: ["run", "DELETE"]
+      forbiddenKeywords: ["query", "execute"]
+    metadata:
+      category: "method-completion"
+      language: "typescript"
+      difficulty: "easy"
+
+  - id: "ts-method-003"
+    text: "Vector search - similarity method"
+    payload:
+      instruction: "Fill in the typescript code"
+      input: |
+        // File: src/search/vector.ts
+        const similar = await vectorDb.
+      context: |
+        // Available methods on VectorDatabase:
+        //   search(query: number[], topK: number): Promise<SearchResult[]>
+        //   insert(id: string, vector: number[]): Promise<void>
+        //   delete(id: string): Promise<boolean>
+      expectedKeywords: ["search"]
+      forbiddenKeywords: ["query", "find", "similarity"]
+    metadata:
+      category: "method-completion"
+      language: "typescript"
+      difficulty: "medium"
+
+  - id: "ts-method-004"
+    text: "Cache operations"
+    payload:
+      instruction: "Fill in the typescript code"
+      input: |
+        // File: src/cache/manager.ts
+        // Check if key exists before fetching
+        if (await cache.
+      context: |
+        // Available methods on CacheManager:
+        //   get<T>(key: string): Promise<T | null>
+        //   set<T>(key: string, value: T, ttl?: number): Promise<void>
+        //   has(key: string): Promise<boolean>
+        //   delete(key: string): Promise<boolean>
+      expectedKeywords: ["has"]
+      forbiddenKeywords: ["exists", "contains", "check"]
+    metadata:
+      category: "method-completion"
+      language: "typescript"
+      difficulty: "medium"
+
+  # ============================================
+  # Category: yaml-completion (3 cases)
+  # ============================================
+
+  - id: "yaml-001"
+    text: "YAML stop-words list continuation"
+    payload:
+      instruction: "Complete the YAML configuration"
+      input: |
+        # File: config/stop-words.yml
+        code_generic:
+          - undefined
+          - "true"
+          - "false"
+          -
+      expectedKeywords: ["null"]
+    metadata:
+      category: "yaml-completion"
+      language: "yaml"
+      difficulty: "easy"
+
+  - id: "yaml-002"
+    text: "YAML scoring profile"
+    payload:
+      instruction: "Complete the YAML configuration"
+      input: |
+        # File: config/scoring-profiles.yml
+        bugfix:
+          graphInbound: 0.5
+          graphOutbound:
+      expectedKeywords: ["0."]
+      expectedPattern: "\\d+\\.\\d+"
+    metadata:
+      category: "yaml-completion"
+      language: "yaml"
+      difficulty: "medium"
+
+  - id: "yaml-003"
+    text: "YAML query dataset entry"
+    payload:
+      instruction: "Complete the YAML configuration"
+      input: |
+        # File: datasets/queries.yaml
+        queries:
+          - id: "feature-001"
+            text: "user authentication"
+            metadata:
+              category:
+      expectedKeywords: ["feature", "auth"]
+    metadata:
+      category: "yaml-completion"
+      language: "yaml"
+      difficulty: "medium"
+
+  # ============================================
+  # Category: error-handling (3 cases)
+  # ============================================
+
+  - id: "ts-error-001"
+    text: "Basic try-catch"
+    payload:
+      instruction: "Add error handling to this function"
+      input: |
+        async function fetchUser(id: string) {
+          const response = await fetch(`/api/users/${id}`);
+      expectedKeywords: ["try", "catch"]
+      expectedPattern: "catch\\s*\\("
+    metadata:
+      category: "error-handling"
+      language: "typescript"
+      difficulty: "easy"
+
+  - id: "ts-error-002"
+    text: "Error with custom type"
+    payload:
+      instruction: "Add error handling with proper error type"
+      input: |
+        // File: src/api/client.ts
+        async function makeRequest<T>(url: string): Promise<T> {
+          const response = await fetch(url);
+      context: |
+        // Available error classes:
+        //   class ApiError extends Error { statusCode: number; }
+        //   class NetworkError extends Error { retryable: boolean; }
+      expectedKeywords: ["try", "catch", "ApiError"]
+      expectedPattern: "catch\\s*\\("
+    metadata:
+      category: "error-handling"
+      language: "typescript"
+      difficulty: "medium"
+
+  - id: "ts-error-003"
+    text: "Error with finally"
+    payload:
+      instruction: "Add error handling with cleanup"
+      input: |
+        // File: src/db/transaction.ts
+        async function executeTransaction(queries: string[]) {
+          const conn = await pool.getConnection();
+      expectedKeywords: ["try", "catch", "finally", "release"]
+      expectedPattern: "finally\\s*\\{"
+    metadata:
+      category: "error-handling"
+      language: "typescript"
+      difficulty: "hard"
+
+# Expected results for precision/recall calculation
+expected:
+  - id: "ts-method-001"
+    reference:
+      keywords: ["all<", "SELECT"]
+
+  - id: "ts-method-002"
+    reference:
+      keywords: ["run(", "DELETE"]
+
+  - id: "ts-method-003"
+    reference:
+      keywords: ["search("]
+
+  - id: "ts-method-004"
+    reference:
+      keywords: ["has("]
+
+  - id: "yaml-001"
+    reference:
+      keywords: ["null", "void"]
+
+  - id: "yaml-002"
+    reference:
+      patterns: ["\\d+\\.\\d+"]
+
+  - id: "yaml-003"
+    reference:
+      keywords: ["feature"]
+
+  - id: "ts-error-001"
+    reference:
+      patterns: ["try\\s*\\{", "catch\\s*\\("]
+
+  - id: "ts-error-002"
+    reference:
+      keywords: ["ApiError", "try", "catch"]
+
+  - id: "ts-error-003"
+    reference:
+      keywords: ["try", "catch", "finally"]

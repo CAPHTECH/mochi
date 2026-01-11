@@ -1,0 +1,290 @@
+{
+  "timestamp": "2026-01-11T10:40:12.619Z",
+  "dataset": {
+    "name": "mochi-code-completion-eval",
+    "version": "v2025-01-11",
+    "totalQueries": 10
+  },
+  "overall": {
+    "successCount": 10,
+    "errorCount": 0,
+    "avgLatencyMs": 993,
+    "avgConfidence": 0.33799999999999997,
+    "avgQualityScore": 0.5566666666666666,
+    "avgHallucinationRisk": 0.025
+  },
+  "byCategory": {
+    "method-completion": {
+      "count": 4,
+      "successCount": 4,
+      "avgQualityScore": 0.7
+    },
+    "yaml-completion": {
+      "count": 3,
+      "successCount": 3,
+      "avgQualityScore": 0.5
+    },
+    "error-handling": {
+      "count": 3,
+      "successCount": 3,
+      "avgQualityScore": 0.4222222222222222
+    }
+  },
+  "queries": [
+    {
+      "queryId": "ts-method-001",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 714,
+        "confidence": 0.1,
+        "qualityScore": 1,
+        "hallucinationRisk": 0,
+        "response": "all<T>(sql: string, params?: any[]): Promise<T[]>",
+        "extras": {
+          "tokensGenerated": 5,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [
+            "all"
+          ],
+          "missingKeywords": [],
+          "violations": [],
+          "patternMatched": null,
+          "validation": {
+            "isValid": true,
+            "hallucinationRate": 0
+          }
+        }
+      }
+    },
+    {
+      "queryId": "ts-method-002",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 1969,
+        "confidence": 0.1,
+        "qualityScore": 0,
+        "hallucinationRisk": 0,
+        "response": "all<T>(sql: string, params?: any[]): Promise<T[]>",
+        "extras": {
+          "tokensGenerated": 5,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [],
+          "missingKeywords": [
+            "run",
+            "DELETE"
+          ],
+          "violations": [],
+          "patternMatched": null,
+          "validation": {
+            "isValid": true,
+            "hallucinationRate": 0
+          }
+        }
+      }
+    },
+    {
+      "queryId": "ts-method-003",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 1306,
+        "confidence": 0.1,
+        "qualityScore": 0.8,
+        "hallucinationRisk": 0.25,
+        "response": "search(query, topK);",
+        "extras": {
+          "tokensGenerated": 2,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [
+            "search"
+          ],
+          "missingKeywords": [],
+          "violations": [
+            "query"
+          ],
+          "patternMatched": null,
+          "validation": {
+            "isValid": true,
+            "hallucinationRate": 0
+          }
+        }
+      }
+    },
+    {
+      "queryId": "ts-method-004",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 957,
+        "confidence": 0.1,
+        "qualityScore": 1,
+        "hallucinationRisk": 0,
+        "response": "has(key)) {",
+        "extras": {
+          "tokensGenerated": 2,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [
+            "has"
+          ],
+          "missingKeywords": [],
+          "violations": [],
+          "patternMatched": null,
+          "validation": {
+            "isValid": true,
+            "hallucinationRate": 0
+          }
+        }
+      }
+    },
+    {
+      "queryId": "yaml-001",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 636,
+        "confidence": 0.1,
+        "qualityScore": 1,
+        "hallucinationRisk": 0,
+        "response": "- null",
+        "extras": {
+          "tokensGenerated": 2,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [
+            "null"
+          ],
+          "missingKeywords": [],
+          "violations": [],
+          "patternMatched": null
+        }
+      }
+    },
+    {
+      "queryId": "yaml-002",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 544,
+        "confidence": 0,
+        "qualityScore": 0,
+        "hallucinationRisk": 0,
+        "response": "",
+        "extras": {
+          "tokensGenerated": 0,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [],
+          "missingKeywords": [
+            "0."
+          ],
+          "violations": [],
+          "patternMatched": false
+        }
+      }
+    },
+    {
+      "queryId": "yaml-003",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 717,
+        "confidence": 0.1,
+        "qualityScore": 0.5,
+        "hallucinationRisk": 0,
+        "response": "category: \"auth\"",
+        "extras": {
+          "tokensGenerated": 2,
+          "modeUsed": "auto",
+          "retried": true,
+          "foundKeywords": [
+            "auth"
+          ],
+          "missingKeywords": [
+            "feature"
+          ],
+          "violations": [],
+          "patternMatched": null
+        }
+      }
+    },
+    {
+      "queryId": "ts-error-001",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 523,
+        "confidence": 0.86,
+        "qualityScore": 0,
+        "hallucinationRisk": 0,
+        "response": "const data = await response.json();\n  return { success: true, result: data };\n}",
+        "extras": {
+          "tokensGenerated": 13,
+          "modeUsed": "auto",
+          "retried": false,
+          "foundKeywords": [],
+          "missingKeywords": [
+            "try",
+            "catch"
+          ],
+          "violations": [],
+          "patternMatched": false
+        }
+      }
+    },
+    {
+      "queryId": "ts-error-002",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 894,
+        "confidence": 0.92,
+        "qualityScore": 0.26666666666666666,
+        "hallucinationRisk": 0,
+        "response": "if (!response.ok) {\n    throw new ApiError(`HTTP ${response.status}: ${response.statusText}`, response.status);\n  }\n  return await response.json() as T;\n}",
+        "extras": {
+          "tokensGenerated": 16,
+          "modeUsed": "auto",
+          "retried": false,
+          "foundKeywords": [
+            "ApiError"
+          ],
+          "missingKeywords": [
+            "try",
+            "catch"
+          ],
+          "violations": [],
+          "patternMatched": false,
+          "validation": {
+            "isValid": false,
+            "hallucinationRate": 1,
+            "hallucinatedMethods": [
+              "json"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "queryId": "ts-error-003",
+      "status": "success",
+      "metrics": {
+        "latencyMs": 1670,
+        "confidence": 1,
+        "qualityScore": 1,
+        "hallucinationRisk": 0,
+        "response": "try {\n    await conn.beginTransaction();\n\n    for (const query of queries) {\n      await conn.query(query);\n    }\n\n    await conn.commit();\n  } catch (error) {\n    // Rollback in case of error\n    await conn.rollback();\n    throw error;\n  } finally {\n    // Always release the connection back to pool\n    conn.release();\n  }\n}",
+        "extras": {
+          "tokensGenerated": 43,
+          "modeUsed": "auto",
+          "retried": false,
+          "foundKeywords": [
+            "try",
+            "catch",
+            "finally",
+            "release"
+          ],
+          "missingKeywords": [],
+          "violations": [],
+          "patternMatched": true
+        }
+      }
+    }
+  ]
+}

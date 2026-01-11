@@ -904,3 +904,11 @@ class MochiMCPServer:
         if self.engine:
             self.engine.unload()
         self._initialized = False
+
+
+if __name__ == "__main__":
+    server = MochiMCPServer()
+    try:
+        server.run_stdio()
+    finally:
+        server.shutdown()

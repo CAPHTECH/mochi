@@ -32,7 +32,8 @@ ENV/
 *.swo
 
 # Generated data
-data/
+data/*
+!data/assay/
 test_output/
 output/
 
@@ -44,6 +45,9 @@ models/
 # Logs
 *.log
 wandb/
+
+# Node.js
+node_modules/
 
 # OS
 .DS_Store
