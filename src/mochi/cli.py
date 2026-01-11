@@ -1,5 +1,7 @@
 """CLI entry point for Mochi."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import click
@@ -69,7 +71,7 @@ def prepare(repo: str, output: str, extensions: tuple[str, ...], project_name: s
 @click.option("--train", "-t", required=True, help="Training data file (JSONL)")
 @click.option("--eval", "-e", default=None, help="Evaluation data file (JSONL)")
 @click.option("--output", "-o", default="./output", help="Output directory")
-@click.option("--base-model", "-m", default="Qwen/Qwen2.5-Coder-1.5B", help="Base model")
+@click.option("--base-model", "-m", default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", help="Base model")
 @click.option("--epochs", default=2, help="Number of training epochs")
 @click.option("--batch-size", default=4, help="Batch size")
 @click.option("--learning-rate", default=2e-4, help="Learning rate")
@@ -106,7 +108,7 @@ def train(
 
 
 @main.command()
-@click.option("--base-model", "-m", default="Qwen/Qwen2.5-Coder-1.5B", help="Base model")
+@click.option("--base-model", "-m", default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", help="Base model")
 @click.option("--finetuned", "-f", default=None, help="Fine-tuned model path")
 @click.option("--eval-file", "-e", required=True, help="Evaluation file (JSONL)")
 @click.option("--output", "-o", default="./eval_results.json", help="Output file")
@@ -140,7 +142,7 @@ def evaluate(
 
 @main.command()
 @click.option("--adapter", "-a", required=True, help="LoRA adapter path")
-@click.option("--base-model", "-m", default="Qwen/Qwen2.5-Coder-1.5B", help="Base model")
+@click.option("--base-model", "-m", default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit", help="Base model")
 @click.option("--output", "-o", required=True, help="Output path for merged model")
 def merge(adapter: str, base_model: str, output: str) -> None:
     """Merge LoRA adapter with base model."""

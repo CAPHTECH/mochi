@@ -1,5 +1,7 @@
 """Code chunker using tree-sitter for AST-based splitting."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 

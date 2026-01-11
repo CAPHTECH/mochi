@@ -32,13 +32,37 @@ def detect_device() -> DeviceType:
         return DeviceType.CPU
 
 
+# Model presets for 2025+ models
+MODEL_PRESETS: dict[str, dict] = {
+    "qwen3-coder": {
+        "base_model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "target_modules": [
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+        ],
+        "max_seq_length": 4096,
+        "is_moe": True,
+    },
+    "gpt-oss": {
+        "base_model": "openai/gpt-oss-20b",
+        "target_modules": [
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
+        ],
+        "max_seq_length": 4096,
+        "is_moe": True,
+    },
+}
+
+
 @dataclass
 class LoRAConfig:
     """Configuration for LoRA training (supports both CUDA and MPS)."""
 
     # Model
-    base_model: str = "Qwen/Qwen2.5-Coder-1.5B"
+    base_model: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
     max_seq_length: int = 2048
+    is_moe: bool = False  # Mixture of Experts model flag
 
     # LoRA
     lora_r: int = 64
@@ -74,6 +98,25 @@ class LoRAConfig:
 
     # Quantization (CUDA only)
     use_4bit: bool = False  # Only works on CUDA with bitsandbytes
+
+    @classmethod
+    def from_preset(cls, preset_name: str, **overrides) -> "LoRAConfig":
+        """Create config from a model preset.
+
+        Available presets: qwen3-coder, gpt-oss
+        """
+        if preset_name not in MODEL_PRESETS:
+            available = ", ".join(MODEL_PRESETS.keys())
+            raise ValueError(f"Unknown preset: {preset_name}. Available: {available}")
+
+        preset = MODEL_PRESETS[preset_name]
+        return cls(
+            base_model=preset["base_model"],
+            target_modules=preset["target_modules"],
+            max_seq_length=preset["max_seq_length"],
+            is_moe=preset["is_moe"],
+            **overrides,
+        )
 
 
 def format_alpaca_prompt(example: dict) -> str:
@@ -182,17 +225,33 @@ class MochiTrainer:
 
     def _setup_mps(self) -> None:
         """Set up model for Apple Silicon (MPS)."""
-        print("Using Apple Silicon (MPS) with fp32")
-        print("Note: MPS uses fp32 for stability. 128GB memory is sufficient for 1.5B model.")
+        print("Using Apple Silicon (MPS)")
 
-        # MPS works best with fp32 for stability
-        # For 1.5B model: ~6GB for model + gradients + optimizer states
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.config.base_model,
-            torch_dtype=torch.float32,
-            device_map={"": "mps"},
-            trust_remote_code=True,
-        )
+        if self.config.is_moe:
+            # MoE models (Qwen3-Coder, GPT-OSS) on MPS
+            # Use float16 for MoE to fit in memory, with careful handling
+            print(f"Loading MoE model: {self.config.base_model}")
+            print("Note: MoE model with ~3-4B active params. Using fp16 on 128GB Mac.")
+
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.config.base_model,
+                torch_dtype=torch.float16,
+                device_map={"": "mps"},
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,
+            )
+        else:
+            # Standard dense models on MPS
+            print("Note: MPS uses fp32 for stability. 128GB memory is sufficient for 1.5B model.")
+
+            # MPS works best with fp32 for stability
+            # For 1.5B model: ~6GB for model + gradients + optimizer states
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.config.base_model,
+                torch_dtype=torch.float32,
+                device_map={"": "mps"},
+                trust_remote_code=True,
+            )
 
     def _setup_cpu(self) -> None:
         """Set up model for CPU."""
@@ -290,15 +349,26 @@ class MochiTrainer:
         elif self.device_type == DeviceType.MPS:
             # MPS settings
             args["optim"] = "adamw_torch"
-            args["fp16"] = False
             args["bf16"] = False  # MPS doesn't support bf16 well
             args["packing"] = False  # Disable packing on MPS (no flash attention)
-            # Use smaller batch size for MPS stability
-            args["per_device_train_batch_size"] = min(self.config.batch_size, 2)
-            args["gradient_accumulation_steps"] = max(
-                self.config.gradient_accumulation_steps,
-                self.config.batch_size // 2,
-            )
+
+            if self.config.is_moe:
+                # MoE models on MPS: use fp16, smaller batch for memory
+                args["fp16"] = True
+                args["per_device_train_batch_size"] = 1
+                args["gradient_accumulation_steps"] = max(
+                    self.config.gradient_accumulation_steps, 8
+                )
+                # Reduce save frequency for MoE (larger checkpoints)
+                args["save_steps"] = max(self.config.save_steps, 200)
+            else:
+                # Dense models on MPS: use fp32 for stability
+                args["fp16"] = False
+                args["per_device_train_batch_size"] = min(self.config.batch_size, 2)
+                args["gradient_accumulation_steps"] = max(
+                    self.config.gradient_accumulation_steps,
+                    self.config.batch_size // 2,
+                )
         else:
             # CPU settings
             args["optim"] = "adamw_torch"

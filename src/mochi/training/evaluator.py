@@ -23,7 +23,7 @@ class ModelEvaluator:
 
     def __init__(
         self,
-        base_model_name: str = "Qwen/Qwen2.5-Coder-1.5B",
+        base_model_name: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         finetuned_model_path: str | None = None,
     ) -> None:
         """Initialize evaluator with model paths."""
