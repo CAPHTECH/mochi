@@ -40,26 +40,162 @@ GLOBAL_BUILTINS_FILTER: frozenset[str] = frozenset({
     "parseInt", "parseFloat", "isNaN", "isFinite",
     "encodeURI", "decodeURI", "encodeURIComponent", "decodeURIComponent",
     "escape", "unescape", "postMessage",
+    # Web Platform APIs (pollute TypeScript completions)
+    "queueMicrotask", "structuredClone", "reportError",
+    "requestAnimationFrame", "cancelAnimationFrame",
+    "requestIdleCallback", "cancelIdleCallback",
+    "addEventListener", "removeEventListener", "dispatchEvent",
+    "getComputedStyle", "matchMedia", "scroll", "scrollTo", "scrollBy",
+    "open", "close", "focus", "blur", "moveBy", "moveTo", "resizeBy", "resizeTo",
     # JavaScript global constructors
     "Object", "Array", "String", "Number", "Boolean", "Date", "Function",
     "Math", "JSON", "Promise", "RegExp", "Error", "Symbol", "BigInt",
     "Map", "Set", "WeakMap", "WeakSet",
     "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Int16Array",
     "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-    "Proxy", "Reflect",
+    "Proxy", "Reflect", "SharedArrayBuffer", "Atomics",
+    "FinalizationRegistry", "WeakRef",
     # Node.js globals
     "require", "module", "exports", "__dirname", "__filename",
-    "process", "Buffer", "global",
+    "process", "Buffer", "global", "globalThis",
     # Console methods (if appearing as top-level)
     "console", "log", "warn", "error", "info", "debug",
     # Common DOM globals
     "document", "window", "navigator", "location", "history",
     "localStorage", "sessionStorage", "XMLHttpRequest",
+    "Request", "Response", "Headers", "URL", "URLSearchParams",
+    "FormData", "Blob", "File", "FileReader", "FileList",
+    "Image", "Audio", "Video", "MediaSource",
+    "Worker", "ServiceWorker", "SharedWorker",
+    "WebSocket", "EventSource", "BroadcastChannel",
+    "Notification", "PushManager",
+    "Cache", "CacheStorage", "IndexedDB", "IDBDatabase",
+    "AbortController", "AbortSignal",
+    "TextEncoder", "TextDecoder",
+    "Crypto", "SubtleCrypto", "CryptoKey",
+    "Performance", "PerformanceObserver",
+    "IntersectionObserver", "MutationObserver", "ResizeObserver",
+    "CustomEvent", "Event", "MessageEvent", "ErrorEvent",
+    "DOMParser", "XMLSerializer",
     # TypeScript utility types (often pollute completions)
     "Partial", "Required", "Readonly", "Record", "Pick", "Omit",
     "Exclude", "Extract", "NonNullable", "ReturnType", "Parameters",
     "ConstructorParameters", "InstanceType", "ThisType",
+    "Awaited", "Uppercase", "Lowercase", "Capitalize", "Uncapitalize",
+    # Vitest/Jest globals
+    "describe", "it", "test", "expect", "beforeEach", "afterEach",
+    "beforeAll", "afterAll", "vi", "jest", "mock", "spyOn",
+    # Node.js fs/stream methods (appear in completions)
+    "access", "accessSync", "appendFile", "appendFileSync",
+    "chmod", "chmodSync", "chown", "chownSync", "close", "closeSync",
+    "copyFile", "copyFileSync", "cp", "cpSync",
+    "createReadStream", "createWriteStream",
+    "exists", "existsSync", "fchmod", "fchmodSync", "fchown", "fchownSync",
+    "fdatasync", "fdatasyncSync", "fstat", "fstatSync",
+    "fsync", "fsyncSync", "ftruncate", "ftruncateSync",
+    "futimes", "futimesSync", "lchmod", "lchmodSync", "lchown", "lchownSync",
+    "link", "linkSync", "lstat", "lstatSync",
+    "mkdir", "mkdirSync", "mkdtemp", "mkdtempSync",
+    "open", "openSync", "opendir", "opendirSync",
+    "read", "readSync", "readdir", "readdirSync",
+    "readFile", "readFileSync", "readlink", "readlinkSync", "readv", "readvSync",
+    "realpath", "realpathSync", "rename", "renameSync",
+    "rm", "rmSync", "rmdir", "rmdirSync",
+    "stat", "statSync", "statfs", "statfsSync",
+    "symlink", "symlinkSync", "truncate", "truncateSync",
+    "unlink", "unlinkSync", "unwatchFile", "utimes", "utimesSync",
+    "watch", "watchFile", "write", "writeSync",
+    "writeFile", "writeFileSync", "writev", "writevSync",
+    # Node.js AbortController/Signal methods
+    "abort", "aborted", "throwIfAborted",
+    "addAbortListener", "addAbortSignal",
+    # Node.js events methods
+    "addListener", "emit", "eventNames", "getMaxListeners",
+    "listenerCount", "listeners", "off", "on", "once",
+    "prependListener", "prependOnceListener", "rawListeners",
+    "removeAllListeners", "removeListener", "setMaxListeners",
+    # Node.js stream methods
+    "pipe", "unpipe", "cork", "uncork", "destroy",
+    "pause", "resume", "read", "push", "unshift",
+    "wrap", "compose", "pipeline", "finished",
+    # Node.js crypto methods
+    "createHash", "createHmac", "createCipheriv", "createDecipheriv",
+    "createSign", "createVerify", "generateKey", "generateKeyPair",
+    "randomBytes", "randomFill", "randomInt", "randomUUID",
+    "scrypt", "scryptSync", "pbkdf2", "pbkdf2Sync",
+    # Node.js path methods
+    "basename", "dirname", "extname", "format", "isAbsolute",
+    "join", "normalize", "parse", "relative", "resolve",
+    "sep", "delimiter", "posix", "win32",
+    # TypeScript compiler API methods (pollute completions)
+    "addEmitHelper", "addEmitHelpers", "addRange",
+    "addSyntheticLeadingComment", "addSyntheticTrailingComment",
+    "after", "before", "between",
+    "acquireLock", "releaseLock",
 })
+
+# Global/standard library types to filter out
+# These are common across all projects and not domain-specific
+GLOBAL_TYPES_FILTER: frozenset[str] = frozenset({
+    # JavaScript built-in types
+    "Object", "Array", "String", "Number", "Boolean", "Function", "Symbol",
+    "Error", "TypeError", "RangeError", "SyntaxError", "ReferenceError",
+    "EvalError", "URIError", "AggregateError",
+    "Promise", "PromiseLike", "Thenable",
+    "Map", "Set", "WeakMap", "WeakSet", "ReadonlyMap", "ReadonlySet",
+    "ArrayBuffer", "SharedArrayBuffer", "DataView",
+    "Int8Array", "Uint8Array", "Uint8ClampedArray",
+    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array",
+    "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array",
+    "RegExp", "RegExpMatchArray", "RegExpExecArray",
+    "Date", "JSON",
+    "Proxy", "ProxyHandler", "Reflect",
+    # Node.js built-in types
+    "Buffer", "NodeJS", "Process", "Global",
+    "EventEmitter", "Readable", "Writable", "Duplex", "Transform",
+    "IncomingMessage", "ServerResponse", "ClientRequest",
+    "Server", "Socket", "Agent", "TLSSocket",
+    "ChildProcess", "Cluster", "Worker",
+    "Console", "Inspector",
+    "ReadStream", "WriteStream", "Stats", "Dirent",
+    "URL", "URLSearchParams",
+    "AsyncLocalStorage", "AsyncResource",
+    "AssertionError",
+    # TypeScript utility types
+    "Partial", "Required", "Readonly", "Record", "Pick", "Omit",
+    "Exclude", "Extract", "NonNullable", "ReturnType", "Parameters",
+    "ConstructorParameters", "InstanceType", "ThisType", "ThisParameterType",
+    "OmitThisParameter", "Awaited", "NoInfer",
+    "Uppercase", "Lowercase", "Capitalize", "Uncapitalize",
+    "PropertyKey", "PropertyDescriptor", "PropertyDescriptorMap",
+    # Common library types (too generic)
+    "Iterator", "IterableIterator", "Generator", "GeneratorFunction",
+    "AsyncIterator", "AsyncIterableIterator", "AsyncGenerator",
+    # DOM types
+    "Document", "Element", "Node", "NodeList", "HTMLElement",
+    "Event", "EventTarget", "EventListener",
+    "Window", "Navigator", "Location", "History",
+    "Request", "Response", "Headers", "Body",
+    "Blob", "File", "FileList", "FileReader",
+    "FormData", "URLSearchParams",
+    "AbortController", "AbortSignal",
+    "MessagePort", "MessageChannel",
+    "Performance", "PerformanceEntry",
+    # Test framework types
+    "Mock", "SpyInstance", "Mocked",
+})
+
+# Patterns to identify library-internal symbols
+# Symbols matching these patterns are usually not project-specific
+LIBRARY_INTERNAL_PATTERNS: tuple[str, ...] = (
+    r"^\$",           # Zod internal: $ZodAsyncError, etc.
+    r"^_[a-z]",       # Private/internal: _any, _array, etc.
+    r"^__",           # Dunder methods: __proto__, etc.
+    r"Internal$",     # *Internal types
+    r"Private$",      # *Private types
+    r"^NodeJS\.",     # NodeJS namespace
+    r"^globalThis\.", # globalThis namespace
+)
 
 
 @dataclass
@@ -423,6 +559,24 @@ class ContextExtractor:
 
         return results
 
+    def _is_library_internal(self, name: str) -> bool:
+        """Check if a symbol name matches library-internal patterns.
+
+        These patterns indicate symbols that are not project-specific,
+        such as Zod internal types ($ZodError), private members (_internal),
+        or namespaced globals (NodeJS.Process).
+
+        Args:
+            name: Symbol name to check
+
+        Returns:
+            True if the name matches a library-internal pattern
+        """
+        for pattern in LIBRARY_INTERNAL_PATTERNS:
+            if re.match(pattern, name):
+                return True
+        return False
+
     def _extract_methods(
         self, completions: list[CompletionItem]
     ) -> list[MethodSignature]:
@@ -431,7 +585,9 @@ class ContextExtractor:
         Parses LSP completion items to extract full signatures including
         parameters and return types.
 
-        Filters out global builtin functions to reduce noise and hallucinations.
+        Filters out:
+        - Global builtin functions (queueMicrotask, setTimeout, etc.)
+        - Library-internal methods ($zodMethod, _privateMethod, etc.)
         """
         methods = []
         seen_names = set()
@@ -447,6 +603,10 @@ class ContextExtractor:
 
                 # Filter out global builtins to prevent hallucinations
                 if item.label in GLOBAL_BUILTINS_FILTER:
+                    continue
+
+                # Filter out library-internal symbols
+                if self._is_library_internal(item.label):
                     continue
 
                 seen_names.add(item.label)
@@ -533,7 +693,12 @@ class ContextExtractor:
     def _extract_types(
         self, completions: list[CompletionItem]
     ) -> list[TypeInfo]:
-        """Extract type information from completions."""
+        """Extract type information from completions.
+
+        Filters out:
+        - Global/standard library types (Array, Promise, Error, etc.)
+        - Library-internal types ($ZodAsyncError, _InternalType, etc.)
+        """
         types = []
         seen_names = set()
 
@@ -547,6 +712,15 @@ class ContextExtractor:
             ):
                 if item.label in seen_names:
                     continue
+
+                # Filter out global/standard library types
+                if item.label in GLOBAL_TYPES_FILTER:
+                    continue
+
+                # Filter out library-internal types
+                if self._is_library_internal(item.label):
+                    continue
+
                 seen_names.add(item.label)
 
                 # Map kind to string

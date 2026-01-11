@@ -197,6 +197,227 @@ queries:
       language: "typescript"
       difficulty: "hard"
 
+  # ============================================
+  # Category: llm-assist (3 cases)
+  # LLM補助効果 - mochiコンテキストが幻覚を防ぐか検証
+  # ============================================
+
+  - id: "llm-assist-001"
+    text: "LLM hallucination prevention - kiri search"
+    payload:
+      instruction: "Fill in the code. Use ONLY methods listed in the context."
+      input: |
+        // File: src/search/semantic.ts
+        // Find similar code snippets for the query
+        const results = await kiriClient.
+      context: |
+        // kiriClient: KiriMCPClient (from kiri MCP server)
+        // Available methods:
+        //   snippets_search(query: string, limit?: number): Promise<Snippet[]>
+        //   context_bundle(file: string): Promise<Bundle>
+        //   files_search(pattern: string): Promise<File[]>
+      expectedKeywords: ["snippets_search"]
+      forbiddenKeywords: ["search", "find", "query", "get", "fetch"]
+    metadata:
+      category: "llm-assist"
+      scenario: "hallucination-prevention"
+      difficulty: "medium"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  - id: "llm-assist-002"
+    text: "LLM hallucination prevention - embedding"
+    payload:
+      instruction: "Complete the code using only the provided API."
+      input: |
+        // File: src/embedding/service.ts
+        // Generate embedding for the text
+        const vector = await embedder.
+      context: |
+        // embedder: EmbeddingService
+        // Available methods:
+        //   encode(text: string): Promise<number[]>
+        //   encodeBatch(texts: string[]): Promise<number[][]>
+      expectedKeywords: ["encode"]
+      forbiddenKeywords: ["embed", "embedding", "vectorize", "transform"]
+    metadata:
+      category: "llm-assist"
+      scenario: "hallucination-prevention"
+      difficulty: "medium"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  - id: "llm-assist-003"
+    text: "LLM guidance - correct return type"
+    payload:
+      instruction: "Complete the function signature based on the context."
+      input: |
+        // File: src/api/response.ts
+        async function getUsers():
+      context: |
+        // Project convention: All API responses use Result type
+        // type Result<T> = { ok: true; data: T } | { ok: false; error: Error }
+        // Never return raw arrays or Promise<T[]>
+      expectedKeywords: ["Result"]
+      forbiddenKeywords: ["[]", "Array"]
+    metadata:
+      category: "llm-assist"
+      scenario: "convention-guidance"
+      difficulty: "medium"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  # ============================================
+  # Category: domain-pattern (2 cases)
+  # ドメインパターン伝達 - kiri固有パターンを正しく伝えられるか
+  # ============================================
+
+  - id: "domain-pattern-001"
+    text: "kiri error handling pattern"
+    payload:
+      instruction: "Add error handling following the project pattern."
+      input: |
+        // File: src/mcp/handler.ts
+        async function handleToolCall(name: string, args: unknown) {
+          const tool = tools.get(name);
+      context: |
+        // Project error handling pattern:
+        // 1. Use custom error classes (ToolNotFoundError, ValidationError)
+        // 2. Always include error code and context
+        // 3. Use Result<T, E> for recoverable errors
+        // Example:
+        //   if (!tool) throw new ToolNotFoundError(name, { available: [...tools.keys()] });
+      expectedKeywords: ["ToolNotFoundError", "throw"]
+      forbiddenKeywords: ["Error(", "new Error"]
+    metadata:
+      category: "domain-pattern"
+      pattern: "error-handling"
+      difficulty: "hard"
+      shouldCallTool: true
+      expectedTool: "mochi_suggest_pattern"
+
+  - id: "domain-pattern-002"
+    text: "kiri logging pattern"
+    payload:
+      instruction: "Add appropriate logging following project conventions."
+      input: |
+        // File: src/indexer/worker.ts
+        async function processFile(path: string) {
+          // Log start of processing
+      context: |
+        // Project logging pattern:
+        // 1. Use structured logging with logger.info/warn/error
+        // 2. Always include context object: logger.info("message", { key: value })
+        // 3. Use consistent event names: "file:process:start", "file:process:end"
+      expectedKeywords: ["logger", "info", "file:process"]
+      forbiddenKeywords: ["console.log", "console.info"]
+    metadata:
+      category: "domain-pattern"
+      pattern: "logging"
+      difficulty: "medium"
+      shouldCallTool: true
+      expectedTool: "mochi_suggest_pattern"
+
+  # ============================================
+  # Category: context-quality (2 cases)
+  # コンテキスト品質 - LSPコンテキストが正確で有用か
+  # ============================================
+
+  - id: "context-quality-001"
+    text: "LSP method signature accuracy"
+    payload:
+      instruction: "Call the method with correct parameters based on the signature."
+      input: |
+        // File: src/search/indexer.ts
+        await index.
+      context: |
+        // index: SearchIndex
+        // Methods:
+        //   add(doc: Document, options?: IndexOptions): Promise<void>
+        //   remove(id: string): Promise<boolean>
+        //   update(id: string, partial: Partial<Document>): Promise<void>
+      expectedKeywords: ["add", "Document"]
+      expectedPattern: "add\\s*\\("
+    metadata:
+      category: "context-quality"
+      aspect: "method-signature"
+      difficulty: "easy"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  - id: "context-quality-002"
+    text: "Type inference from context"
+    payload:
+      instruction: "Complete the type annotation based on the context."
+      input: |
+        // File: src/config/loader.ts
+        function loadConfig(path: string):
+      context: |
+        // Config loading in this project:
+        // - Returns ConfigResult which is Result<Config, ConfigError>
+        // - Config has: { database: DbConfig, cache: CacheConfig, logging: LogConfig }
+        // - ConfigError has: code, message, path
+      expectedKeywords: ["ConfigResult", "Result"]
+    metadata:
+      category: "context-quality"
+      aspect: "type-inference"
+      difficulty: "medium"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  # ============================================
+  # Category: e2e-workflow (2 cases)
+  # E2Eワークフロー - Claude Code + mochi統合のユースケース
+  # ============================================
+
+  - id: "e2e-001"
+    text: "Claude Code integration - code review assist"
+    payload:
+      instruction: "Suggest improvements based on project conventions."
+      input: |
+        // Review target: src/api/users.ts
+        export async function getUser(id: string) {
+          const user = await db.query("SELECT * FROM users WHERE id = ?", [id]);
+          return user;
+        }
+      context: |
+        // Project conventions:
+        // 1. Use typed query methods: db.all<T>(), db.get<T>()
+        // 2. Return Result<T> not raw values
+        // 3. Add input validation with zod
+        // 4. Use prepared statements via db.prepare()
+      expectedKeywords: ["all", "Result", "zod"]
+      forbiddenKeywords: ["query"]
+    metadata:
+      category: "e2e-workflow"
+      scenario: "code-review"
+      difficulty: "hard"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
+  - id: "e2e-002"
+    text: "Claude Code integration - implementation from spec"
+    payload:
+      instruction: "Implement the function according to the specification."
+      input: |
+        // Spec: Create a function that searches for files matching a pattern
+        // Should use kiri MCP server methods
+        async function searchFiles(pattern: string):
+      context: |
+        // kiriClient: KiriMCPClient
+        // Available:
+        //   files_search(pattern: string): Promise<FileMatch[]>
+        //   files_read(path: string): Promise<string>
+        // FileMatch: { path: string, score: number }
+      expectedKeywords: ["files_search", "FileMatch"]
+      forbiddenKeywords: ["glob", "fs.", "readdir"]
+    metadata:
+      category: "e2e-workflow"
+      scenario: "implementation"
+      difficulty: "hard"
+      shouldCallTool: true
+      expectedTool: "mochi_domain_query"
+
 # Expected results for precision/recall calculation
 expected:
   - id: "ts-method-001"
@@ -238,3 +459,44 @@ expected:
   - id: "ts-error-003"
     reference:
       keywords: ["try", "catch", "finally"]
+
+  # llm-assist category
+  - id: "llm-assist-001"
+    reference:
+      keywords: ["snippets_search"]
+
+  - id: "llm-assist-002"
+    reference:
+      keywords: ["encode"]
+
+  - id: "llm-assist-003"
+    reference:
+      keywords: ["Result"]
+
+  # domain-pattern category
+  - id: "domain-pattern-001"
+    reference:
+      keywords: ["ToolNotFoundError"]
+
+  - id: "domain-pattern-002"
+    reference:
+      keywords: ["logger", "file:process"]
+
+  # context-quality category
+  - id: "context-quality-001"
+    reference:
+      keywords: ["add"]
+      patterns: ["add\\s*\\("]
+
+  - id: "context-quality-002"
+    reference:
+      keywords: ["ConfigResult"]
+
+  # e2e-workflow category
+  - id: "e2e-001"
+    reference:
+      keywords: ["all", "Result"]
+
+  - id: "e2e-002"
+    reference:
+      keywords: ["files_search", "FileMatch"]
