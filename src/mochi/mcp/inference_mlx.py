@@ -11,6 +11,7 @@ Law compliance:
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -118,20 +119,18 @@ Use ONLY the methods listed in Context above.
 
     # P1: Diff generation template
     DIFF_TEMPLATE = """### Instruction:
-Generate a unified diff for the following change.
-Output ONLY the diff in unified format (starting with --- and +++).
-Do not include any explanation or additional text.
+Generate a COMPLETE unified diff for the following change.
+Include ALL additions and modifications. Do not stop early.
+Output format: unified diff starting with --- and +++.
 
 ### Change Request:
 {change_description}
 
-### Original Code:
-```{language}
+### Original Code ({language}):
 {original_code}
-```
 
-### Response (unified diff only):
-"""
+### Response (complete unified diff with all changes):
+---"""
 
     @classmethod
     def format(
@@ -495,6 +494,21 @@ class MLXInferenceEngine:
             if lines and lines[-1].strip() == "```":
                 lines = lines[:-1]
             response = "\n".join(lines)
+
+        # P0: Remove duplicate diff blocks (LLM sometimes repeats same diff)
+        if response.startswith("---"):
+            # Split by diff headers, keeping the delimiter
+            blocks = re.split(r"(?=^--- )", response, flags=re.MULTILINE)
+            if len(blocks) > 1:
+                # Keep only unique blocks (preserving order)
+                seen = set()
+                unique_blocks = []
+                for block in blocks:
+                    block_stripped = block.strip()
+                    if block_stripped and block_stripped not in seen:
+                        seen.add(block_stripped)
+                        unique_blocks.append(block)
+                response = "".join(unique_blocks)
 
         # Remove leading/trailing whitespace
         response = response.strip()
@@ -861,9 +875,14 @@ class MLXInferenceEngine:
         if context:
             prompt = f"### Context (MUST USE):\n{context}\n\n{prompt}"
 
-        # Create sampler with low temperature for deterministic diffs
-        sampler = make_sampler(temp=temperature, top_p=0.3)
-        repetition_penalty = make_repetition_penalty(penalty=1.1, context_size=50)
+        # Create sampler - slightly higher temp for complete output
+        # (too low causes early EOS on TypeScript)
+        effective_temp = max(temperature, 0.2)
+        sampler = make_sampler(temp=effective_temp, top_p=0.6)
+        # P0: Moderate penalty to prevent duplicates without truncating output
+        repetition_penalty = make_repetition_penalty(penalty=1.15, context_size=100)
+        # P0: Prevent early EOS - ensure minimum output length
+        min_tokens_processor = make_min_tokens_processor(self.tokenizer, min_tokens=30)
 
         # Generate
         response = generate(
@@ -872,7 +891,7 @@ class MLXInferenceEngine:
             prompt=prompt,
             max_tokens=max_new_tokens,
             sampler=sampler,
-            logits_processors=[repetition_penalty],
+            logits_processors=[repetition_penalty, min_tokens_processor],
         )
 
         elapsed = time.time() - start_time
@@ -898,30 +917,39 @@ class MLXInferenceEngine:
         ).with_confidence_warning()
 
     def _extract_diff(self, response: str) -> str:
-        """Extract unified diff from response, cleaning up non-diff content."""
+        """Extract unified diff from response, cleaning up non-diff content.
+
+        P0: Permissive extraction - keep all content between diff headers.
+        Only remove clear non-diff content (prose before/after diff).
+        """
         lines = response.split("\n")
         diff_lines = []
         in_diff = False
+        seen_first_block = False  # Track if we've completed first diff block
 
         for line in lines:
-            # Start of diff
-            if line.startswith("---") or line.startswith("+++"):
-                in_diff = True
-                diff_lines.append(line)
-            elif in_diff:
-                # Valid diff lines
-                if line.startswith(("+", "-", " ", "@@")):
+            # Detect start of diff
+            if line.startswith("---"):
+                if not in_diff:
+                    in_diff = True
                     diff_lines.append(line)
-                # End of diff section
-                elif line.strip() == "" and diff_lines:
-                    diff_lines.append("")
-                elif line.startswith("```"):
-                    # Stop at code fence end
+                elif seen_first_block:
+                    # Second --- header = duplicate block, stop
                     break
                 else:
-                    # Non-diff content - could be end or noise
-                    if diff_lines:
-                        break
+                    diff_lines.append(line)
+            # +++ header
+            elif line.startswith("+++"):
+                if in_diff:
+                    diff_lines.append(line)
+                    seen_first_block = True
+            elif in_diff:
+                # Code fence - stop
+                if line.startswith("```"):
+                    break
+                # Keep ALL content once we're in diff mode
+                # This includes +, -, context lines, empty lines, etc.
+                diff_lines.append(line)
 
         # If no proper diff found, return as-is
         if not diff_lines:

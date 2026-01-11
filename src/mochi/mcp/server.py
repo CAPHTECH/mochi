@@ -109,6 +109,8 @@ class MochiMCPServer:
                 "MODES: 'auto' (default) retries with conservative params if confidence < 0.5, "
                 "'conservative' uses low temperature for precise output, "
                 "'creative' uses higher temperature for diverse suggestions. "
+                "RECOMMENDED: Use 'conservative' for short completions (1-line), "
+                "Use 'creative' for full function generation and error handling code. "
                 "Response includes 'mode_used' and 'retried' fields for transparency."
             ),
             input_schema={
@@ -156,7 +158,7 @@ class MochiMCPServer:
                     "mode": {
                         "type": "string",
                         "enum": ["auto", "conservative", "creative"],
-                        "description": "Generation mode: 'auto' (default, retries with conservative if low confidence), 'conservative' (low temp, high precision), 'creative' (higher temp)",
+                        "description": "Generation mode: 'auto' (default), 'conservative' (1-line completions), 'creative' (full functions, error handling)",
                     },
                     "auto_retry": {
                         "type": "boolean",
