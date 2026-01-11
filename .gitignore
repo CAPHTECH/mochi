@@ -39,6 +39,7 @@ output/
 # Models
 *.bin
 *.safetensors
+models/
 
 # Logs
 *.log
