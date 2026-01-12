@@ -110,6 +110,11 @@ class ProjectAdapter:
 
             adapter_path = self.config.adapter_path
 
+            # Check for adapter in subdirectory (MLX-LM training output structure)
+            adapter_subdir = adapter_path / "adapter"
+            if adapter_subdir.exists() and (adapter_subdir / "adapters.safetensors").exists():
+                adapter_path = adapter_subdir
+
             # MLX-lm loads base model + adapter
             self._model, self._tokenizer = load(
                 self.config.base_model,
