@@ -299,16 +299,28 @@ def train_project(
             raise click.Abort()
 
 
+def _expand_adapter_path(path: str | None) -> Path | None:
+    """Expand ~ and resolve adapter path."""
+    if path is None:
+        return None
+    # Expand ~ to home directory
+    expanded = Path(path).expanduser()
+    # If it's a relative path, resolve it
+    if not expanded.is_absolute():
+        expanded = Path.cwd() / expanded
+    return expanded.resolve()
+
+
 @main.command()
 @click.option(
     "--base", "-b",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    help="Base adapter directory",
+    type=str,
+    help="Base adapter path (supports ~) or HuggingFace repo ID",
 )
 @click.option(
     "--project", "-p",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    help="Project adapter directory",
+    type=str,
+    help="Project adapter path (supports ~)",
 )
 @click.option(
     "--model", "-m",
@@ -328,8 +340,8 @@ def train_project(
     help="Weight for project adapter (0.0-1.0)",
 )
 def serve(
-    base: Path | None,
-    project: Path | None,
+    base: str | None,
+    project: str | None,
     model: str,
     base_weight: float,
     project_weight: float,
@@ -339,19 +351,36 @@ def serve(
     The server provides the domain_query tool for code completion
     using the specified adapters.
 
+    Adapter paths support ~ expansion (e.g., ~/.mochi/adapters/my-project).
+
     The server communicates over stdio using JSON-RPC 2.0 protocol.
     Configure Claude Code to use this server via mcp_servers config.
+
+    \b
+    Examples:
+      # Local adapter
+      mochi serve --base ~/.mochi/adapters/my-project
+
+      # HuggingFace Hub adapter (public)
+      mochi serve --base CAPHTECH/mochi-base-ts-v1
     """
-    from ..serving import MCPServer, start_server
-    from ..serving.mcp_server import MCPServerConfig
+    from ..serving import start_server
 
     click.echo("Starting mochi MCP server...", err=True)
 
-    if base:
-        click.echo(f"Base Adapter: {base}", err=True)
-    if project:
-        click.echo(f"Project Adapter: {project}", err=True)
-    if not base and not project:
+    # Expand paths
+    base_path = _expand_adapter_path(base) if base and "/" in base and not base.startswith(("http", "hf:")) else None
+    project_path = _expand_adapter_path(project) if project else None
+
+    # For HuggingFace repo IDs, pass as string
+    base_adapter_arg = base_path or base
+    project_adapter_arg = project_path or project
+
+    if base_adapter_arg:
+        click.echo(f"Base Adapter: {base_adapter_arg}", err=True)
+    if project_adapter_arg:
+        click.echo(f"Project Adapter: {project_adapter_arg}", err=True)
+    if not base_adapter_arg and not project_adapter_arg:
         click.echo("Warning: No adapters specified. Using base model only.", err=True)
 
     click.echo(f"Model: {model}", err=True)
@@ -360,8 +389,8 @@ def serve(
 
     # Start the MCP server
     start_server(
-        base_adapter=base,
-        project_adapter=project,
+        base_adapter=base_adapter_arg,
+        project_adapter=project_adapter_arg,
         base_model=model,
         base_weight=base_weight,
         project_weight=project_weight,

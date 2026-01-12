@@ -1,68 +1,228 @@
-# Mochi - ドメイン特化型SLM生成システム
+# Mochi - Domain-Specific Code Completion
 
-プロジェクト固有の知識を学習した軽量SLM（Small Language Model）を生成し、LLMによるコード生成の精度を向上させるシステム。
+A library that improves code completion accuracy using adapters trained on project-specific patterns.
 
-## 概要
+## Features
+
+- **Base Adapter + Project Adapter** - Two-layer architecture with common patterns and project-specific patterns
+- **Apple Silicon Optimized** - Fast inference via MLX (M1/M2/M3/M4 support)
+- **MCP Server** - Integration with Claude Code/Claude Desktop
+- **Lightweight** - Runs on 0.5B-3B parameter models
+- **Private Project Support** - Train and distribute adapters for private codebases
+
+## Installation
+
+```bash
+# Basic installation
+pip install mochi
+
+# For Apple Silicon (recommended)
+pip install mochi[mlx]
+
+# Full installation with training capabilities
+pip install mochi[mlx,training]
+```
+
+## Quick Start
+
+### 1. Use as MCP Server with uvx (Recommended)
+
+Add to Claude Code configuration (`~/.claude/settings.json` or project `.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "mochi": {
+      "command": "uvx",
+      "args": [
+        "--from", "mochi[mlx]",
+        "mochi", "serve",
+        "--base", "~/.mochi/adapters/my-project"
+      ]
+    }
+  }
+}
+```
+
+### 2. Private Project Workflow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         Mochi                                │
-├─────────────────────────────────────────────────────────────┤
-│  [プロジェクト資産]     [学習パイプライン]     [SLM出力]      │
+│  1. Train adapter locally                                    │
+│     mochi train project --data ./data --output ./adapter     │
 │                                                              │
-│   ソースコード ──┐                                           │
-│   ドキュメント ──┼──▶ 前処理 ──▶ 学習 ──▶ ドメイン特化SLM    │
-│   コミット履歴 ──┤         ▲                    │            │
-│   Issue/PR ─────┘         │                    ▼            │
-│                      ベースSLM            LLM補助として      │
-│                    (Phi-3, Gemma等)        デプロイ          │
+│  2. Upload to private storage                                │
+│     - S3 / GCS / Azure Blob                                 │
+│     - Private Git repo (Git LFS)                            │
+│     - Shared network drive                                  │
+│                                                              │
+│  3. Each team member downloads adapter                       │
+│     ~/.mochi/adapters/my-project/                           │
+│                                                              │
+│  4. Configure Claude Code MCP                                │
+│     Point to local adapter path                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 解決する課題
-
-| 課題 | Mochiによる解決 |
-|------|-----------------|
-| LLMはプロジェクト固有の規約・パターンを知らない | プロジェクト知識を埋め込んだSLMが補完 |
-| RAGだけでは文脈理解が浅い | 学習により深い理解を実現 |
-| 毎回の大量コンテキスト送信はコスト高 | SLMがローカルで高速に補助 |
-| 機密コードをクラウドに送りたくない | オンプレミス/ローカル実行可能 |
-
-## 主要機能
-
-1. **データ取り込み** - Git、ドキュメント、Issue/PRからの自動収集
-2. **前処理パイプライン** - コードのチャンク化、正規化、重複排除
-3. **学習データ生成** - コード補完ペア、Q&Aデータセットの自動生成
-4. **ファインチューニング** - QLoRA/LoRAによる効率的な学習
-5. **デプロイ** - Ollama/GGUF形式でのエクスポート
-
-## ドキュメント
-
-- [アーキテクチャ設計](./architecture.md)
-- [データパイプライン](./data-pipeline.md)
-- [学習戦略](./training-strategy.md)
-- [ロードマップ](./roadmap.md)
-
-## クイックスタート
+**Train adapter for your project:**
 
 ```bash
-# インストール（予定）
-pip install mochi-slm
+# Initialize project
+mochi init --project /path/to/your-project
 
-# プロジェクトからSLMを生成
-mochi train --repo ./your-project --output ./model
+# Prepare training data
+mochi prepare --repo /path/to/your-project --output ./data/my-project
 
-# 生成したSLMを利用
-mochi serve --model ./model
+# Train Project Adapter
+mochi train project \
+  --data ./data/my-project \
+  --output ./adapter \
+  --model mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit
 ```
 
-## 技術スタック
+**Distribute adapter to team:**
 
-- **ベースモデル**: Phi-3-mini, Qwen2.5-Coder, CodeGemma
-- **学習フレームワーク**: Hugging Face Transformers + PEFT/Unsloth
-- **推論エンジン**: llama.cpp / Ollama
-- **言語**: Python 3.11+
+```bash
+# Upload to S3 (example)
+aws s3 sync ./adapter s3://my-bucket/mochi-adapters/my-project/
 
-## ライセンス
+# Team members download
+aws s3 sync s3://my-bucket/mochi-adapters/my-project/ ~/.mochi/adapters/my-project/
+```
+
+### 3. Use Directly from Python
+
+```python
+from mochi.adapters import BaseAdapter, ProjectAdapter, AdapterStack
+from mochi.inference import InferenceEngine
+
+# Load adapters
+base = BaseAdapter.load("./adapters/base-ts-v1")
+project = ProjectAdapter.load("./adapters/my-project", base_adapter=base)
+
+# Configure stack
+stack = AdapterStack([
+    (base, 0.3),      # Common patterns: 30%
+    (project, 0.7),   # Project-specific: 70%
+])
+
+# Inference
+engine = InferenceEngine(adapter_stack=stack)
+result = engine.complete(
+    instruction="Fill in the code",
+    input_code="const users = await db.",
+)
+print(result.response)
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      mochi Library                           │
+├─────────────────────────────────────────────────────────────┤
+│  Base Adapter (Pre-trained)                                  │
+│  - error-handling, async/await patterns                      │
+│  - type-safety, validation patterns                          │
+├─────────────────────────────────────────────────────────────┤
+│  Project Adapter (Project-specific)                          │
+│  - Naming conventions and coding style                       │
+│  - Custom API patterns and error handling                    │
+├─────────────────────────────────────────────────────────────┤
+│  MCP Server                                                  │
+│  - Claude Code/Desktop integration                           │
+│  - domain_query, complete_code, generate_diff                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Adapter Distribution
+
+| Storage Option | Use Case | Notes |
+|----------------|----------|-------|
+| **Local path** | Single developer | `~/.mochi/adapters/` |
+| **S3/GCS/Azure** | Team/Enterprise | Private bucket with IAM |
+| **Git LFS** | Version controlled | In project repo |
+| **HuggingFace Hub** | Public adapters | For shared base adapters |
+
+**Adapter files (~50MB):**
+```
+adapter/
+├── adapter_config.json      # Metadata
+├── adapters.safetensors     # LoRA weights
+└── tokenizer files...       # Tokenizer config
+```
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `mochi init` | Initialize project |
+| `mochi prepare` | Prepare training data |
+| `mochi train base` | Train Base Adapter |
+| `mochi train project` | Train Project Adapter |
+| `mochi serve` | Start MCP server |
+| `mochi list` | List available adapters |
+
+## MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `domain_query` | Domain-specific code generation (modes: auto/conservative/creative) |
+| `complete_code` | Code completion (prefix/suffix support) |
+| `generate_diff` | Generate unified diff |
+| `suggest_pattern` | Pattern suggestions |
+
+## Claude Code MCP Configuration Examples
+
+**With uvx (recommended):**
+```json
+{
+  "mcpServers": {
+    "mochi": {
+      "command": "uvx",
+      "args": ["--from", "mochi[mlx]", "mochi", "serve", "--base", "~/.mochi/adapters/my-project"]
+    }
+  }
+}
+```
+
+**With pip-installed mochi:**
+```json
+{
+  "mcpServers": {
+    "mochi": {
+      "command": "mochi",
+      "args": ["serve", "--base", "~/.mochi/adapters/my-project"]
+    }
+  }
+}
+```
+
+**With specific Python:**
+```json
+{
+  "mcpServers": {
+    "mochi": {
+      "command": "/opt/homebrew/bin/python3.11",
+      "args": ["-m", "mochi.cli.main", "serve", "--base", "~/.mochi/adapters/my-project"]
+    }
+  }
+}
+```
+
+## Requirements
+
+- Python 3.11+
+- macOS (Apple Silicon recommended) / Linux / Windows
+- Memory: 8GB+ recommended
+
+## Tech Stack
+
+- **Inference**: MLX (Apple Silicon) / PyTorch (CUDA)
+- **Base Model**: Qwen2.5-Coder-0.5B/1.5B/3B
+- **Training**: LoRA/QLoRA
+- **Integration**: MCP (Model Context Protocol)
+
+## License
 
 MIT License

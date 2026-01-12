@@ -190,21 +190,82 @@ class BaseAdapter:
         logger.info(f"Saved BaseAdapter config to {config_path}")
 
     @classmethod
+    def _download_from_hub(cls, repo_id: str, cache_dir: Path | None = None) -> Path:
+        """Download adapter from HuggingFace Hub.
+
+        Args:
+            repo_id: HuggingFace Hub repo ID (e.g., "CAPHTECH/mochi-base-ts-v1")
+            cache_dir: Local cache directory (default: ~/.cache/mochi/adapters)
+
+        Returns:
+            Path to downloaded adapter directory
+        """
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError as e:
+            raise AdapterError(
+                "huggingface_hub is required for downloading adapters. "
+                "Install with: pip install huggingface_hub",
+                {"error": str(e)},
+            ) from e
+
+        if cache_dir is None:
+            cache_dir = Path.home() / ".cache" / "mochi" / "adapters"
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Downloading adapter from HuggingFace Hub: {repo_id}")
+
+        try:
+            local_path = snapshot_download(
+                repo_id=repo_id,
+                cache_dir=str(cache_dir),
+                local_dir=cache_dir / repo_id.replace("/", "--"),
+            )
+            return Path(local_path)
+        except Exception as e:
+            raise AdapterError(
+                f"Failed to download adapter from HuggingFace Hub: {repo_id}",
+                {"error": str(e)},
+            ) from e
+
+    @classmethod
+    def _is_hub_repo_id(cls, path: str) -> bool:
+        """Check if path looks like a HuggingFace Hub repo ID."""
+        # Hub repo IDs have format "org/repo" or "user/repo"
+        # Local paths have "/" but also have "." or start with "/" or "~"
+        if "/" not in path:
+            return False
+        if path.startswith(("/", "~", ".")):
+            return False
+        if "\\" in path:  # Windows path
+            return False
+        parts = path.split("/")
+        return len(parts) == 2 and all(p and not p.startswith(".") for p in parts)
+
+    @classmethod
     def load(
         cls,
         path: Path | str,
         lazy: bool = True,
     ) -> BaseAdapter:
-        """Load adapter from disk.
+        """Load adapter from disk or HuggingFace Hub.
 
         Args:
-            path: Path to adapter directory
+            path: Path to adapter directory or HuggingFace Hub repo ID
+                  (e.g., "CAPHTECH/mochi-base-ts-v1")
             lazy: If True, defer model loading until first use
 
         Returns:
             Loaded BaseAdapter instance
         """
-        path = Path(path)
+        path_str = str(path)
+
+        # Check if it's a HuggingFace Hub repo ID
+        if cls._is_hub_repo_id(path_str):
+            path = cls._download_from_hub(path_str)
+        else:
+            path = Path(path)
 
         if not path.exists():
             raise AdapterNotFoundError(str(path), [str(path)])

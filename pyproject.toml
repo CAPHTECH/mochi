@@ -9,36 +9,70 @@ description = "Domain-specific SLM generator for software projects"
 readme = "docs/README.md"
 requires-python = ">=3.11"
 license = "MIT"
-keywords = ["slm", "fine-tuning", "code-generation", "llm"]
+keywords = ["slm", "fine-tuning", "code-generation", "llm", "mcp", "apple-silicon"]
+authors = [
+    { name = "mochi contributors" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "click>=8.1.0",
     "pyyaml>=6.0",
     "gitpython>=3.1.0",
-    "tree-sitter>=0.21.0",
-    "tree-sitter-typescript>=0.21.0",
+    "requests>=2.31.0",
+    "huggingface_hub>=0.20.0",
+]
+
+[project.optional-dependencies]
+# Apple Silicon (MLX) - recommended for Mac
+mlx = [
+    "mlx>=0.12.0",
+    "mlx-lm>=0.12.0",
+]
+# Full training capabilities
+training = [
     "datasets>=2.18.0",
     "transformers>=4.40.0",
     "peft>=0.10.0",
     "accelerate>=0.29.0",
     "trl>=0.8.0",
-    "torch>=2.2.0",
     "safetensors>=0.4.0",
     "langdetect>=1.0.9",
+    "tree-sitter>=0.21.0",
+    "tree-sitter-typescript>=0.21.0",
 ]
-
-[project.optional-dependencies]
+# CUDA support (Linux/Windows)
 cuda = [
-    "bitsandbytes>=0.43.0",  # CUDA only - for 4-bit quantization
+    "torch>=2.2.0",
+    "bitsandbytes>=0.43.0",
 ]
+# Development dependencies
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.3.0",
     "mypy>=1.9.0",
 ]
+# All dependencies (for full installation)
+all = [
+    "mochi[mlx,training,dev]",
+]
 
 [project.scripts]
-mochi = "mochi.cli:main"
+mochi = "mochi.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/CAPHTECH/mochi"
+Documentation = "https://github.com/CAPHTECH/mochi#readme"
+Repository = "https://github.com/CAPHTECH/mochi"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mochi"]
