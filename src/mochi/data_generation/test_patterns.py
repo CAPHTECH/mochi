@@ -31,9 +31,10 @@ from .diff_extractor import CodeTransformPair, GitDiffExtractor
 logger = logging.getLogger(__name__)
 
 
-# Legacy test-specific transform patterns (kept for backward compatibility)
-# New code should use get_test_patterns() from language_specs
-_LEGACY_TEST_TRANSFORM_PATTERNS: dict[str, list[str]] = {
+# Internal fallback patterns for test-specific transforms.
+# New code should use get_test_patterns() from language_specs module.
+# These patterns are not exported and should not be used directly by external code.
+_FALLBACK_TEST_PATTERNS: dict[str, list[str]] = {
     "test-structure": [
         r"\+\s*describe\s*\(",
         r"\+\s*it\s*\(",
@@ -83,8 +84,8 @@ _LEGACY_TEST_TRANSFORM_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
-# Backward compatibility alias
-TEST_TRANSFORM_PATTERNS = _LEGACY_TEST_TRANSFORM_PATTERNS
+# Note: TEST_TRANSFORM_PATTERNS alias has been removed.
+# Use get_test_patterns() from language_specs for language-specific test patterns.
 
 # Instruction templates for test generation
 TEST_INSTRUCTION_TEMPLATES: dict[str, list[str]] = {
@@ -263,7 +264,7 @@ class TestPatternGenerator:
         pairs = extractor.extract_transforms(
             file_patterns=self.file_patterns,
             max_commits=max_commits,
-            transform_types=transform_types or list(TEST_TRANSFORM_PATTERNS.keys()),
+            transform_types=transform_types or list(_FALLBACK_TEST_PATTERNS.keys()),
         )
 
         return pairs
@@ -654,8 +655,8 @@ class _TestDiffExtractor(GitDiffExtractor):
                     if re.search(pattern, diff_text, re.MULTILINE):
                         return transform_type
 
-        # Fall back to legacy patterns
-        for transform_type, patterns in TEST_TRANSFORM_PATTERNS.items():
+        # Fall back to internal patterns when language-specific patterns don't match
+        for transform_type, patterns in _FALLBACK_TEST_PATTERNS.items():
             for pattern in patterns:
                 if re.search(pattern, diff_text, re.MULTILINE):
                     return transform_type

@@ -54,334 +54,358 @@ class PatternClassifier:
     validation for borderline cases.
     """
 
-    # Instruction templates for each transform type (language-agnostic or TypeScript)
-    INSTRUCTION_TEMPLATES: dict[str, list[str]] = {
-        "error-handling": [
-            "Add error handling to this function",
-            "Wrap this code with try-catch and handle errors appropriately",
-            "Add proper error handling following TypeScript best practices",
-            "Handle potential errors in this code",
-            "Add error recovery to this function",
-        ],
-        "null-safety": [
-            "Add null safety checks to this code",
-            "Make this code null-safe using optional chaining",
-            "Add proper null checks to prevent runtime errors",
-            "Handle null and undefined values safely",
-            "Add defensive null handling",
-        ],
-        "type-safety": [
-            "Add type annotations to this code",
-            "Improve type safety of this function",
-            "Add proper TypeScript types",
-            "Add type guards where appropriate",
-            "Strengthen the types in this code",
-        ],
-        "async-await": [
-            "Convert this callback-based code to async/await",
-            "Refactor to use async/await pattern",
-            "Modernize this async code using await",
-            "Convert Promise chains to async/await",
-        ],
-        "validation": [
-            "Add input validation to this function",
-            "Add runtime validation using zod",
-            "Validate the input parameters",
-            "Add schema validation to this code",
-            "Add assertions to verify input",
-        ],
-        # Test patterns
-        "test-structure": [
-            "Write a unit test for this function",
-            "Create a test case for this implementation",
-            "Complete the test describe/it structure",
-            "Write the test body with proper assertions",
-            "Add a test case for this behavior",
-        ],
-        "test-assertion": [
-            "Add assertions to verify the behavior",
-            "Write expect statements to validate",
-            "Add proper assertions for this test",
-            "Complete the expect statements",
-            "Verify the expected behavior with assertions",
-        ],
-        "test-setup": [
-            "Set up test fixtures",
-            "Write the setup/teardown for this test",
-            "Initialize test dependencies in beforeEach",
-            "Add proper test setup and cleanup",
-        ],
-        "test-mock": [
-            "Set up mocks for this dependency",
-            "Create mock implementations",
-            "Mock the external dependencies",
-            "Write mock setup for this test",
-        ],
-    }
-
-    # Python-specific instruction templates
-    PYTHON_INSTRUCTION_TEMPLATES: dict[str, list[str]] = {
-        "error-handling": [
-            "Add error handling to this function",
-            "Wrap this code with try-except and handle exceptions appropriately",
-            "Add proper error handling following Python best practices",
-            "Handle potential exceptions in this code",
-            "Add error recovery with specific exception types",
-        ],
-        "null-safety": [
-            "Add None safety checks to this code",
-            "Handle None values safely with proper guards",
-            "Add proper None checks to prevent runtime errors",
-            "Use Optional type hints and handle None appropriately",
-            "Add defensive None handling",
-        ],
-        "type-safety": [
-            "Add type hints to this code",
-            "Improve type safety of this function",
-            "Add proper Python type annotations",
-            "Add type guards using isinstance checks",
-            "Strengthen the types using typing module",
-        ],
-        "async-await": [
-            "Convert this code to async/await",
-            "Refactor to use async/await pattern",
-            "Modernize this async code using await",
-            "Convert callback-based code to async/await",
-        ],
-        "validation": [
-            "Add input validation to this function",
-            "Add runtime validation using pydantic",
-            "Validate the input parameters",
-            "Add schema validation to this code",
-            "Add assertions to verify input",
-        ],
-        # Test patterns
-        "test-structure": [
-            "Write a pytest test for this function",
-            "Create a test case for this implementation",
-            "Write the test function with proper assertions",
-            "Add a pytest test for this behavior",
-        ],
-        "test-assertion": [
-            "Add assert statements to verify the behavior",
-            "Write assertions to validate",
-            "Add proper assertions for this test",
-            "Complete the assert statements",
-            "Verify the expected behavior with assertions",
-        ],
-        "test-setup": [
-            "Set up test fixtures using pytest",
-            "Write a pytest fixture for this test",
-            "Initialize test dependencies with fixtures",
-            "Add proper test setup using @pytest.fixture",
-        ],
-        "test-mock": [
-            "Set up mocks using @patch decorator",
-            "Create mock implementations with MagicMock",
-            "Mock the external dependencies",
-            "Write mock setup using pytest-mock",
-        ],
-    }
-
-    # Quality heuristics for each transform type (TypeScript/JavaScript)
-    QUALITY_PATTERNS: dict[str, dict[str, list[str]]] = {
-        "error-handling": {
-            "good": [
-                r"try\s*\{[\s\S]+catch\s*\(",  # Complete try-catch
-                r"throw\s+new\s+\w+Error",  # Typed errors
-                r"catch\s*\(\s*\w+\s*:\s*\w+\s*\)",  # Typed catch
+    # Unified instruction templates: language -> transform_type -> templates
+    # "default" is used for TypeScript/JavaScript and as fallback
+    _INSTRUCTION_TEMPLATES: dict[str, dict[str, list[str]]] = {
+        "default": {
+            "error-handling": [
+                "Add error handling to this function",
+                "Wrap this code with try-catch and handle errors appropriately",
+                "Add proper error handling following TypeScript best practices",
+                "Handle potential errors in this code",
+                "Add error recovery to this function",
             ],
-            "bad": [
-                r"catch\s*\(\s*\)\s*\{\s*\}",  # Empty catch
-                r"catch\s*\(\s*_\s*\)",  # Ignored error
+            "null-safety": [
+                "Add null safety checks to this code",
+                "Make this code null-safe using optional chaining",
+                "Add proper null checks to prevent runtime errors",
+                "Handle null and undefined values safely",
+                "Add defensive null handling",
+            ],
+            "type-safety": [
+                "Add type annotations to this code",
+                "Improve type safety of this function",
+                "Add proper TypeScript types",
+                "Add type guards where appropriate",
+                "Strengthen the types in this code",
+            ],
+            "async-await": [
+                "Convert this callback-based code to async/await",
+                "Refactor to use async/await pattern",
+                "Modernize this async code using await",
+                "Convert Promise chains to async/await",
+            ],
+            "validation": [
+                "Add input validation to this function",
+                "Add runtime validation using zod",
+                "Validate the input parameters",
+                "Add schema validation to this code",
+                "Add assertions to verify input",
+            ],
+            "test-structure": [
+                "Write a unit test for this function",
+                "Create a test case for this implementation",
+                "Complete the test describe/it structure",
+                "Write the test body with proper assertions",
+                "Add a test case for this behavior",
+            ],
+            "test-assertion": [
+                "Add assertions to verify the behavior",
+                "Write expect statements to validate",
+                "Add proper assertions for this test",
+                "Complete the expect statements",
+                "Verify the expected behavior with assertions",
+            ],
+            "test-setup": [
+                "Set up test fixtures",
+                "Write the setup/teardown for this test",
+                "Initialize test dependencies in beforeEach",
+                "Add proper test setup and cleanup",
+            ],
+            "test-mock": [
+                "Set up mocks for this dependency",
+                "Create mock implementations",
+                "Mock the external dependencies",
+                "Write mock setup for this test",
             ],
         },
-        "null-safety": {
-            "good": [
-                r"\?\.\w+",  # Optional chaining
-                r"\?\?\s*['\"\w]",  # Nullish coalescing with default
-                r"if\s*\(\s*\w+\s*!==?\s*null",  # Explicit null check
+        "python": {
+            "error-handling": [
+                "Add error handling to this function",
+                "Wrap this code with try-except and handle exceptions appropriately",
+                "Add proper error handling following Python best practices",
+                "Handle potential exceptions in this code",
+                "Add error recovery with specific exception types",
             ],
-            "bad": [
-                r"!\s*\.",  # Non-null assertion (unsafe)
+            "null-safety": [
+                "Add None safety checks to this code",
+                "Handle None values safely with proper guards",
+                "Add proper None checks to prevent runtime errors",
+                "Use Optional type hints and handle None appropriately",
+                "Add defensive None handling",
             ],
-        },
-        "type-safety": {
-            "good": [
-                r":\s*[A-Z][a-zA-Z0-9_<>]+",  # Type annotation
-                r"as\s+const",  # Const assertion
-                r"is\s+[A-Z]\w+",  # Type guard
+            "type-safety": [
+                "Add type hints to this code",
+                "Improve type safety of this function",
+                "Add proper Python type annotations",
+                "Add type guards using isinstance checks",
+                "Strengthen the types using typing module",
             ],
-            "bad": [
-                r":\s*any\b",  # any type
-                r"as\s+any\b",  # Cast to any
+            "async-await": [
+                "Convert this code to async/await",
+                "Refactor to use async/await pattern",
+                "Modernize this async code using await",
+                "Convert callback-based code to async/await",
             ],
-        },
-        "async-await": {
-            "good": [
-                r"async\s+function\s+\w+",  # Named async function
-                r"await\s+\w+\s*\(",  # Await call
+            "validation": [
+                "Add input validation to this function",
+                "Add runtime validation using pydantic",
+                "Validate the input parameters",
+                "Add schema validation to this code",
+                "Add assertions to verify input",
             ],
-            "bad": [
-                r"\.then\s*\(",  # Still using .then()
+            "test-structure": [
+                "Write a pytest test for this function",
+                "Create a test case for this implementation",
+                "Write the test function with proper assertions",
+                "Add a pytest test for this behavior",
             ],
-        },
-        "validation": {
-            "good": [
-                r"z\.\w+\s*\(\)",  # Zod schema
-                r"\.parse\s*\(",  # Schema parsing
-                r"assert\w*\s*\(",  # Assertions
+            "test-assertion": [
+                "Add assert statements to verify the behavior",
+                "Write assertions to validate",
+                "Add proper assertions for this test",
+                "Complete the assert statements",
+                "Verify the expected behavior with assertions",
             ],
-            "bad": [],
-        },
-        # Test patterns
-        "test-structure": {
-            "good": [
-                r"describe\s*\(['\"]",  # describe block with name
-                r"it\s*\(['\"]",  # it block with name
-                r"test\s*\(['\"]",  # test block with name
-                r"expect\s*\(",  # Has assertions
+            "test-setup": [
+                "Set up test fixtures using pytest",
+                "Write a pytest fixture for this test",
+                "Initialize test dependencies with fixtures",
+                "Add proper test setup using @pytest.fixture",
             ],
-            "bad": [
-                r"it\.skip\s*\(",  # Skipped test
-                r"describe\.skip\s*\(",  # Skipped describe
-                r"it\s*\(['\"]['\"]",  # Empty test name
+            "test-mock": [
+                "Set up mocks using @patch decorator",
+                "Create mock implementations with MagicMock",
+                "Mock the external dependencies",
+                "Write mock setup using pytest-mock",
             ],
-        },
-        "test-assertion": {
-            "good": [
-                r"expect\s*\([^)]+\)\s*\.\w+",  # Complete expect chain
-                r"\.toBe\s*\(",  # toBe assertion
-                r"\.toEqual\s*\(",  # toEqual assertion
-                r"\.toHaveBeenCalled",  # Mock assertion
-                r"\.toThrow\s*\(",  # Error assertion
-            ],
-            "bad": [
-                r"expect\s*\(\s*\)",  # Empty expect
-            ],
-        },
-        "test-setup": {
-            "good": [
-                r"beforeEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function setup
-                r"afterEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function teardown
-                r"beforeAll\s*\(",  # beforeAll hook
-                r"afterAll\s*\(",  # afterAll hook
-            ],
-            "bad": [
-                r"beforeEach\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)",  # Empty beforeEach
-            ],
-        },
-        "test-mock": {
-            "good": [
-                r"vi\.mock\s*\(['\"]",  # Vitest mock with path
-                r"jest\.mock\s*\(['\"]",  # Jest mock with path
-                r"vi\.fn\s*\(\s*\)",  # Vitest mock function
-                r"jest\.fn\s*\(\s*\)",  # Jest mock function
-                r"\.mockResolvedValue\s*\(",  # Mock resolved value
-                r"\.mockReturnValue\s*\(",  # Mock return value
-            ],
-            "bad": [],
         },
     }
 
-    # Python-specific quality patterns
-    PYTHON_QUALITY_PATTERNS: dict[str, dict[str, list[str]]] = {
-        "error-handling": {
-            "good": [
-                r"try\s*:[\s\S]+except\s+",  # Complete try-except
-                r"raise\s+\w+Error",  # Typed errors
-                r"except\s+\w+\s+as\s+\w+",  # Named exception
-                r"except\s+\([^)]+\)",  # Multiple exception types
-            ],
-            "bad": [
-                r"except\s*:\s*pass",  # Empty except with pass
-                r"except\s+Exception\s*:",  # Catching broad Exception
-                r"except\s*:",  # Bare except
-            ],
+    @classmethod
+    def get_instruction_templates(cls, language: str) -> dict[str, list[str]]:
+        """Get instruction templates for a specific language.
+
+        Args:
+            language: Language identifier (e.g., "python", "typescript")
+
+        Returns:
+            Dictionary of transform_type -> instruction templates
+        """
+        lang_key = language.lower() if language else "default"
+        return cls._INSTRUCTION_TEMPLATES.get(lang_key, cls._INSTRUCTION_TEMPLATES["default"])
+
+    # Unified quality patterns: language -> transform_type -> good/bad patterns
+    # "default" is used for TypeScript/JavaScript and as fallback
+    _QUALITY_PATTERNS: dict[str, dict[str, dict[str, list[str]]]] = {
+        "default": {
+            "error-handling": {
+                "good": [
+                    r"try\s*\{[\s\S]+catch\s*\(",  # Complete try-catch
+                    r"throw\s+new\s+\w+Error",  # Typed errors
+                    r"catch\s*\(\s*\w+\s*:\s*\w+\s*\)",  # Typed catch
+                ],
+                "bad": [
+                    r"catch\s*\(\s*\)\s*\{\s*\}",  # Empty catch
+                    r"catch\s*\(\s*_\s*\)",  # Ignored error
+                ],
+            },
+            "null-safety": {
+                "good": [
+                    r"\?\.\w+",  # Optional chaining
+                    r"\?\?\s*['\"\w]",  # Nullish coalescing with default
+                    r"if\s*\(\s*\w+\s*!==?\s*null",  # Explicit null check
+                ],
+                "bad": [
+                    r"!\s*\.",  # Non-null assertion (unsafe)
+                ],
+            },
+            "type-safety": {
+                "good": [
+                    r":\s*[A-Z][a-zA-Z0-9_<>]+",  # Type annotation
+                    r"as\s+const",  # Const assertion
+                    r"is\s+[A-Z]\w+",  # Type guard
+                ],
+                "bad": [
+                    r":\s*any\b",  # any type
+                    r"as\s+any\b",  # Cast to any
+                ],
+            },
+            "async-await": {
+                "good": [
+                    r"async\s+function\s+\w+",  # Named async function
+                    r"await\s+\w+\s*\(",  # Await call
+                ],
+                "bad": [
+                    r"\.then\s*\(",  # Still using .then()
+                ],
+            },
+            "validation": {
+                "good": [
+                    r"z\.\w+\s*\(\)",  # Zod schema
+                    r"\.parse\s*\(",  # Schema parsing
+                    r"assert\w*\s*\(",  # Assertions
+                ],
+                "bad": [],
+            },
+            "test-structure": {
+                "good": [
+                    r"describe\s*\(['\"]",  # describe block with name
+                    r"it\s*\(['\"]",  # it block with name
+                    r"test\s*\(['\"]",  # test block with name
+                    r"expect\s*\(",  # Has assertions
+                ],
+                "bad": [
+                    r"it\.skip\s*\(",  # Skipped test
+                    r"describe\.skip\s*\(",  # Skipped describe
+                    r"it\s*\(['\"]['\"]",  # Empty test name
+                ],
+            },
+            "test-assertion": {
+                "good": [
+                    r"expect\s*\([^)]+\)\s*\.\w+",  # Complete expect chain
+                    r"\.toBe\s*\(",  # toBe assertion
+                    r"\.toEqual\s*\(",  # toEqual assertion
+                    r"\.toHaveBeenCalled",  # Mock assertion
+                    r"\.toThrow\s*\(",  # Error assertion
+                ],
+                "bad": [
+                    r"expect\s*\(\s*\)",  # Empty expect
+                ],
+            },
+            "test-setup": {
+                "good": [
+                    r"beforeEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function setup
+                    r"afterEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function teardown
+                    r"beforeAll\s*\(",  # beforeAll hook
+                    r"afterAll\s*\(",  # afterAll hook
+                ],
+                "bad": [
+                    r"beforeEach\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)",  # Empty beforeEach
+                ],
+            },
+            "test-mock": {
+                "good": [
+                    r"vi\.mock\s*\(['\"]",  # Vitest mock with path
+                    r"jest\.mock\s*\(['\"]",  # Jest mock with path
+                    r"vi\.fn\s*\(\s*\)",  # Vitest mock function
+                    r"jest\.fn\s*\(\s*\)",  # Jest mock function
+                    r"\.mockResolvedValue\s*\(",  # Mock resolved value
+                    r"\.mockReturnValue\s*\(",  # Mock return value
+                ],
+                "bad": [],
+            },
         },
-        "null-safety": {
-            "good": [
-                r"if\s+\w+\s+is\s+not\s+None",  # Explicit None check
-                r"if\s+\w+\s+is\s+None",  # None check
-                r"\w+\s+or\s+['\"\w]",  # Default value with or
-                r"Optional\[",  # Optional type hint
-            ],
-            "bad": [],
-        },
-        "type-safety": {
-            "good": [
-                r":\s*[A-Z][a-zA-Z0-9_\[\]]+",  # Type annotation
-                r"->\s*[A-Z]\w+",  # Return type annotation
-                r"isinstance\s*\(",  # Type guard
-                r"@dataclass",  # Dataclass
-            ],
-            "bad": [
-                r":\s*Any\b",  # Any type
-            ],
-        },
-        "async-await": {
-            "good": [
-                r"async\s+def\s+\w+",  # Async function
-                r"await\s+\w+",  # Await expression
-            ],
-            "bad": [],
-        },
-        "validation": {
-            "good": [
-                r"class\s+\w+\s*\(\s*BaseModel\s*\)",  # Pydantic model
-                r"@validator\s*\(",  # Pydantic validator
-                r"@field_validator\s*\(",  # Pydantic v2 validator
-                r"assert\s+",  # Assert statements
-            ],
-            "bad": [],
-        },
-        # Test patterns
-        "test-structure": {
-            "good": [
-                r"def\s+test_\w+",  # Test function
-                r"class\s+Test\w+",  # Test class
-                r"assert\s+",  # Has assertions
-                r"@pytest\.mark\.",  # Pytest marker
-            ],
-            "bad": [
-                r"@pytest\.mark\.skip",  # Skipped test
-                r"def\s+test_\s*\(",  # Empty test name
-            ],
-        },
-        "test-assertion": {
-            "good": [
-                r"assert\s+\w+\s*==",  # Equality assertion
-                r"assert\s+\w+\s+in\s+",  # Membership assertion
-                r"pytest\.raises\s*\(",  # Exception assertion
-                r"assert\s+not\s+",  # Negation assertion
-            ],
-            "bad": [
-                r"assert\s+True",  # Trivial assertion
-                r"assert\s+1\s*==\s*1",  # Trivial assertion
-            ],
-        },
-        "test-setup": {
-            "good": [
-                r"@pytest\.fixture",  # Pytest fixture
-                r"def\s+\w+\s*\(\s*\w+\s*\)",  # Fixture parameter
-                r"yield\s+",  # Fixture with cleanup
-            ],
-            "bad": [
-                r"@pytest\.fixture\s*\(\s*\)\s*\ndef\s+\w+.*:\s*pass",  # Empty fixture
-            ],
-        },
-        "test-mock": {
-            "good": [
-                r"@patch\s*\(['\"]",  # Patch with path
-                r"MagicMock\s*\(",  # MagicMock
-                r"mocker\.patch",  # pytest-mock
-                r"\.return_value\s*=",  # Mock return value
-            ],
-            "bad": [
-                r"@patch\s*\(\s*\)",  # Empty patch
-            ],
+        "python": {
+            "error-handling": {
+                "good": [
+                    r"try\s*:[\s\S]+except\s+",  # Complete try-except
+                    r"raise\s+\w+Error",  # Typed errors
+                    r"except\s+\w+\s+as\s+\w+",  # Named exception
+                    r"except\s+\([^)]+\)",  # Multiple exception types
+                ],
+                "bad": [
+                    r"except\s*:\s*pass",  # Empty except with pass
+                    r"except\s+Exception\s*:",  # Catching broad Exception
+                    r"except\s*:",  # Bare except
+                ],
+            },
+            "null-safety": {
+                "good": [
+                    r"if\s+\w+\s+is\s+not\s+None",  # Explicit None check
+                    r"if\s+\w+\s+is\s+None",  # None check
+                    r"\w+\s+or\s+['\"\w]",  # Default value with or
+                    r"Optional\[",  # Optional type hint
+                ],
+                "bad": [],
+            },
+            "type-safety": {
+                "good": [
+                    r":\s*[A-Z][a-zA-Z0-9_\[\]]+",  # Type annotation
+                    r"->\s*[A-Z]\w+",  # Return type annotation
+                    r"isinstance\s*\(",  # Type guard
+                    r"@dataclass",  # Dataclass
+                ],
+                "bad": [
+                    r":\s*Any\b",  # Any type
+                ],
+            },
+            "async-await": {
+                "good": [
+                    r"async\s+def\s+\w+",  # Async function
+                    r"await\s+\w+",  # Await expression
+                ],
+                "bad": [],
+            },
+            "validation": {
+                "good": [
+                    r"class\s+\w+\s*\(\s*BaseModel\s*\)",  # Pydantic model
+                    r"@validator\s*\(",  # Pydantic validator
+                    r"@field_validator\s*\(",  # Pydantic v2 validator
+                    r"assert\s+",  # Assert statements
+                ],
+                "bad": [],
+            },
+            "test-structure": {
+                "good": [
+                    r"def\s+test_\w+",  # Test function
+                    r"class\s+Test\w+",  # Test class
+                    r"assert\s+",  # Has assertions
+                    r"@pytest\.mark\.",  # Pytest marker
+                ],
+                "bad": [
+                    r"@pytest\.mark\.skip",  # Skipped test
+                    r"def\s+test_\s*\(",  # Empty test name
+                ],
+            },
+            "test-assertion": {
+                "good": [
+                    r"assert\s+\w+\s*==",  # Equality assertion
+                    r"assert\s+\w+\s+in\s+",  # Membership assertion
+                    r"pytest\.raises\s*\(",  # Exception assertion
+                    r"assert\s+not\s+",  # Negation assertion
+                ],
+                "bad": [
+                    r"assert\s+True",  # Trivial assertion
+                    r"assert\s+1\s*==\s*1",  # Trivial assertion
+                ],
+            },
+            "test-setup": {
+                "good": [
+                    r"@pytest\.fixture",  # Pytest fixture
+                    r"def\s+\w+\s*\(\s*\w+\s*\)",  # Fixture parameter
+                    r"yield\s+",  # Fixture with cleanup
+                ],
+                "bad": [
+                    r"@pytest\.fixture\s*\(\s*\)\s*\ndef\s+\w+.*:\s*pass",  # Empty fixture
+                ],
+            },
+            "test-mock": {
+                "good": [
+                    r"@patch\s*\(['\"]",  # Patch with path
+                    r"MagicMock\s*\(",  # MagicMock
+                    r"mocker\.patch",  # pytest-mock
+                    r"\.return_value\s*=",  # Mock return value
+                ],
+                "bad": [
+                    r"@patch\s*\(\s*\)",  # Empty patch
+                ],
+            },
         },
     }
+
+    @classmethod
+    def get_quality_patterns(cls, language: str) -> dict[str, dict[str, list[str]]]:
+        """Get quality patterns for a specific language.
+
+        Args:
+            language: Language identifier (e.g., "python", "typescript")
+
+        Returns:
+            Dictionary of transform_type -> good/bad patterns
+        """
+        lang_key = language.lower() if language else "default"
+        return cls._QUALITY_PATTERNS.get(lang_key, cls._QUALITY_PATTERNS["default"])
 
     # LLM classification prompt (language-aware)
     CLASSIFICATION_PROMPT = """Analyze this {language} code transformation and classify it.
@@ -490,13 +514,9 @@ Respond ONLY in JSON format:
         """
         transform_type = pair.transform_type  # Already classified by extractor
 
-        # Select quality patterns based on language
-        if self._is_python(language):
-            quality_patterns = self.PYTHON_QUALITY_PATTERNS
-            instruction_templates = self.PYTHON_INSTRUCTION_TEMPLATES
-        else:
-            quality_patterns = self.QUALITY_PATTERNS
-            instruction_templates = self.INSTRUCTION_TEMPLATES
+        # Get patterns using unified API
+        quality_patterns = self.get_quality_patterns(language)
+        instruction_templates = self.get_instruction_templates(language)
 
         # Check quality patterns
         after_code = pair.after_code

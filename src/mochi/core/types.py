@@ -29,6 +29,30 @@ class AdapterType(str, Enum):
 LanguageSpec = Union[LanguageId, str]
 
 
+def normalize_language_list(languages: list[LanguageSpec]) -> list[LanguageSpec]:
+    """Normalize language list, converting strings to LanguageId where possible.
+
+    This is a shared utility function used by adapter configurations to convert
+    string language identifiers to their LanguageId enum values when available.
+
+    Args:
+        languages: List of language identifiers (LanguageId or string)
+
+    Returns:
+        Normalized list with strings converted to LanguageId where possible
+    """
+    normalized: list[LanguageSpec] = []
+    for lang in languages:
+        if isinstance(lang, str):
+            try:
+                normalized.append(LanguageId(lang))
+            except ValueError:
+                normalized.append(lang)  # Keep as string for unknown languages
+        else:
+            normalized.append(lang)
+    return normalized
+
+
 @dataclass
 class AdapterConfig:
     """Base configuration for all adapters."""
@@ -75,20 +99,7 @@ class BaseAdapterConfig(AdapterConfig):
         super().__post_init__()
         self.adapter_type = AdapterType.BASE
         # Convert string languages to LanguageId where possible
-        self._normalize_languages()
-
-    def _normalize_languages(self) -> None:
-        """Convert string languages to LanguageId where possible."""
-        normalized = []
-        for lang in self.languages:
-            if isinstance(lang, str):
-                try:
-                    normalized.append(LanguageId(lang))
-                except ValueError:
-                    normalized.append(lang)  # Keep as string for unknown languages
-            else:
-                normalized.append(lang)
-        self.languages = normalized
+        self.languages = normalize_language_list(self.languages)
 
     @property
     def file_patterns(self) -> list[str]:
@@ -124,20 +135,7 @@ class ProjectAdapterConfig(AdapterConfig):
         if isinstance(self.project_root, str):
             self.project_root = Path(self.project_root)
         # Convert string languages to LanguageId where possible
-        self._normalize_languages()
-
-    def _normalize_languages(self) -> None:
-        """Convert string languages to LanguageId where possible."""
-        normalized = []
-        for lang in self.languages:
-            if isinstance(lang, str):
-                try:
-                    normalized.append(LanguageId(lang))
-                except ValueError:
-                    normalized.append(lang)  # Keep as string for unknown languages
-            else:
-                normalized.append(lang)
-        self.languages = normalized
+        self.languages = normalize_language_list(self.languages)
 
     @property
     def include_patterns(self) -> list[str]:

@@ -235,7 +235,7 @@ class TestContextExtractor:
             return_value=[
                 CompletionItem("all", CompletionItemKind.Method, "(sql) => T[]"),
                 CompletionItem("run", CompletionItemKind.Method, "(sql) => void"),
-                CompletionItem("Blob", CompletionItemKind.Class, None),
+                CompletionItem("BlobStore", CompletionItemKind.Class, None),
             ]
         )
         client.get_workspace_symbols = AsyncMock(
@@ -267,7 +267,7 @@ class TestContextExtractor:
         assert "run" in method_names
         # Types are TypeInfo objects
         type_names = [t.name for t in context.types]
-        assert "Blob" in type_names
+        assert "BlobStore" in type_names
 
     @pytest.mark.asyncio
     async def test_extract_with_schema(self, mock_lsp_client, tmp_path):
@@ -317,7 +317,7 @@ tables:
         """_extract_types filters to types only and returns TypeInfo."""
         completions = [
             CompletionItem("all", CompletionItemKind.Method, None),
-            CompletionItem("Blob", CompletionItemKind.Class, None),
+            CompletionItem("BlobStore", CompletionItemKind.Class, None),
             CompletionItem("IDatabase", CompletionItemKind.Interface, None),
         ]
 
@@ -325,12 +325,12 @@ tables:
 
         # Returns TypeInfo objects
         type_names = [t.name for t in types]
-        assert "Blob" in type_names
+        assert "BlobStore" in type_names
         assert "IDatabase" in type_names
         assert "all" not in type_names
 
         # Check kind is set
-        blob_type = next(t for t in types if t.name == "Blob")
+        blob_type = next(t for t in types if t.name == "BlobStore")
         assert blob_type.kind == "class"
 
     def test_parse_typescript_signature(self, extractor):

@@ -41,9 +41,10 @@ class CodeTransformPair:
     language: LanguageId | None = None  # Detected language
 
 
-# Legacy patterns for backward compatibility - now prefer language_specs
-# These are used as fallback when language detection fails
-_LEGACY_TRANSFORM_PATTERNS: dict[str, list[str]] = {
+# Internal fallback patterns for when language detection fails.
+# New code should use LanguageSpec.transform_patterns from language_specs module.
+# These patterns are not exported and should not be used directly by external code.
+_FALLBACK_TRANSFORM_PATTERNS: dict[str, list[str]] = {
     "error-handling": [
         r"\+.*try\s*[\{:]",
         r"\+.*catch\s*\(",
@@ -124,8 +125,8 @@ _LEGACY_TRANSFORM_PATTERNS: dict[str, list[str]] = {
     ],
 }
 
-# Backward compatibility alias
-TRANSFORM_PATTERNS = _LEGACY_TRANSFORM_PATTERNS
+# Note: TRANSFORM_PATTERNS alias has been removed.
+# Use LanguageSpec.transform_patterns from language_specs for language-specific patterns.
 
 
 class GitDiffExtractor:
@@ -390,8 +391,8 @@ class GitDiffExtractor:
             spec = LANGUAGE_SPECS[language_id]
             patterns_to_check = spec.get_all_transform_patterns()
         else:
-            # Fallback to legacy patterns
-            patterns_to_check = _LEGACY_TRANSFORM_PATTERNS
+            # Fallback to internal patterns when language is unknown
+            patterns_to_check = _FALLBACK_TRANSFORM_PATTERNS
 
         for transform_type, patterns in patterns_to_check.items():
             for pattern in patterns:
