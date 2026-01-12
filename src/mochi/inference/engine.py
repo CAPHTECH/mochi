@@ -5,7 +5,9 @@ Provides a high-level API for running inference with mochi adapters.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
     from ..adapters.base_adapter import BaseAdapter
     from ..adapters.project_adapter import ProjectAdapter
     from ..lsp.client import LSPClient
+    from ..lsp.context_extractor import ContextExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,7 @@ class InferenceEngine:
         adapter: BaseAdapter | ProjectAdapter | None = None,
         adapter_stack: AdapterStack | None = None,
         lsp_client: LSPClient | None = None,
+        context_extractor: ContextExtractor | None = None,
         config: InferenceConfig | None = None,
     ) -> None:
         """Initialize inference engine.
@@ -61,7 +65,8 @@ class InferenceEngine:
         Args:
             adapter: Single adapter for inference (mutually exclusive with adapter_stack)
             adapter_stack: Stack of adapters for inference
-            lsp_client: Optional LSP client for context extraction
+            lsp_client: Optional LSP client for context extraction (legacy)
+            context_extractor: Optional ContextExtractor for enhanced context extraction
             config: Inference configuration
         """
         if adapter is None and adapter_stack is None:
@@ -72,6 +77,7 @@ class InferenceEngine:
         self._adapter = adapter
         self._adapter_stack = adapter_stack
         self._lsp_client = lsp_client
+        self._context_extractor = context_extractor
         self.config = config or InferenceConfig()
         self._prompt_builder = PromptBuilder(
             include_file_path=True,
@@ -164,6 +170,11 @@ class InferenceEngine:
     def _get_lsp_context(self, file_path: str, input_code: str) -> str | None:
         """Get LSP context for the given file and code.
 
+        Uses ContextExtractor for enhanced context extraction including:
+        - Receiver type detection (e.g., "db." -> DuckDBClient)
+        - Method signatures with parameters and return types
+        - Filtered completions (no global builtins)
+
         Args:
             file_path: Path to the file
             input_code: Current code at cursor
@@ -171,16 +182,65 @@ class InferenceEngine:
         Returns:
             LSP context string or None
         """
-        if not self._lsp_client:
+        # Prefer ContextExtractor if available
+        if self._context_extractor:
+            return self._get_context_via_extractor(file_path, input_code)
+
+        # Legacy fallback: direct LSP client usage
+        if self._lsp_client:
+            return self._get_context_via_lsp_client(file_path, input_code)
+
+        return None
+
+    def _get_context_via_extractor(self, file_path: str, input_code: str) -> str | None:
+        """Extract context using ContextExtractor (async wrapper).
+
+        Args:
+            file_path: Path to the file
+            input_code: Current code at cursor
+
+        Returns:
+            Formatted context string or None
+        """
+        try:
+            # Detect cursor position from input_code
+            line, character = self._detect_cursor_position(input_code)
+
+            # Run async extraction in sync context
+            loop = asyncio.new_event_loop()
+            try:
+                context_block = loop.run_until_complete(
+                    self._context_extractor.extract_at_position(
+                        Path(file_path),
+                        line,
+                        character,
+                        include_schema=True,
+                    )
+                )
+            finally:
+                loop.close()
+
+            # Return formatted context if not empty
+            if context_block and not context_block.is_empty():
+                return context_block.format(detailed=True)
+
             return None
 
-        try:
-            # Extract context from LSP
-            # This would typically involve:
-            # 1. Getting completions at cursor position
-            # 2. Getting type information
-            # 3. Getting method signatures
+        except Exception as e:
+            logger.debug(f"ContextExtractor extraction failed: {e}")
+            return None
 
+    def _get_context_via_lsp_client(self, file_path: str, input_code: str) -> str | None:
+        """Legacy context extraction using direct LSP client.
+
+        Args:
+            file_path: Path to the file
+            input_code: Current code at cursor
+
+        Returns:
+            Context string or None
+        """
+        try:
             context_parts = []
 
             # Get completions (available methods/properties)
@@ -198,6 +258,56 @@ class InferenceEngine:
         except Exception as e:
             logger.debug(f"LSP context extraction failed: {e}")
             return None
+
+    def _detect_cursor_position(self, input_code: str) -> tuple[int, int]:
+        """Detect cursor position from input code.
+
+        Looks for common completion trigger points:
+        - After a dot (method/property access): "obj."
+        - After opening parenthesis (arguments): "func("
+        - End of code if no specific trigger found
+
+        Args:
+            input_code: Code string to analyze
+
+        Returns:
+            Tuple of (line_number, character_position), 0-indexed
+        """
+        lines = input_code.split("\n")
+
+        # Find the last meaningful position
+        for line_idx in range(len(lines) - 1, -1, -1):
+            line = lines[line_idx]
+
+            # Skip empty lines
+            if not line.strip():
+                continue
+
+            # Look for trigger characters from the end
+            for char_idx in range(len(line) - 1, -1, -1):
+                char = line[char_idx]
+
+                # After a dot: "db." -> position after the dot
+                if char == ".":
+                    return (line_idx, char_idx + 1)
+
+                # After opening paren: "func(" -> position inside
+                if char == "(":
+                    return (line_idx, char_idx + 1)
+
+            # If no trigger found on this line, return end of line
+            return (line_idx, len(line))
+
+        # Default: start of first line
+        return (0, 0)
+
+    def set_context_extractor(self, context_extractor: ContextExtractor) -> None:
+        """Set or update the ContextExtractor.
+
+        Args:
+            context_extractor: ContextExtractor instance
+        """
+        self._context_extractor = context_extractor
 
     def batch_complete(
         self,

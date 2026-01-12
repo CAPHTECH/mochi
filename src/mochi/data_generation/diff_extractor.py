@@ -68,6 +68,36 @@ TRANSFORM_PATTERNS: dict[str, list[str]] = {
         r"\+.*z\.\w+\s*\(",
         r"\+.*assert\w*\s*\(",
     ],
+    # Test patterns
+    "test-structure": [
+        r"\+\s*describe\s*\(",
+        r"\+\s*it\s*\(",
+        r"\+\s*test\s*\(",
+        r"\+\s*expect\s*\(",
+    ],
+    "test-assertion": [
+        r"\+.*expect\s*\([^)]+\)\s*\.\w+",
+        r"\+.*\.toBe\s*\(",
+        r"\+.*\.toEqual\s*\(",
+        r"\+.*\.toHaveBeenCalled",
+        r"\+.*\.toThrow\s*\(",
+        r"\+.*\.toMatchSnapshot\s*\(",
+    ],
+    "test-setup": [
+        r"\+\s*beforeEach\s*\(",
+        r"\+\s*afterEach\s*\(",
+        r"\+\s*beforeAll\s*\(",
+        r"\+\s*afterAll\s*\(",
+    ],
+    "test-mock": [
+        r"\+\s*vi\.mock\s*\(",
+        r"\+\s*jest\.mock\s*\(",
+        r"\+\s*vi\.fn\s*\(",
+        r"\+\s*jest\.fn\s*\(",
+        r"\+.*\.mockResolvedValue\s*\(",
+        r"\+.*\.mockReturnValue\s*\(",
+        r"\+.*\.mockImplementation\s*\(",
+    ],
 }
 
 
@@ -435,6 +465,60 @@ class GitDiffExtractor:
         if transform_type == "async-await":
             # After code should have async/await
             if "async" not in after_code and "await" not in after_code:
+                return False
+
+        # Test patterns validation
+        if transform_type == "test-structure":
+            # After code should have describe/it/test/expect
+            has_test_structure = any(
+                keyword in after_code
+                for keyword in ["describe(", "it(", "test(", "expect("]
+            )
+            if not has_test_structure:
+                return False
+
+        if transform_type == "test-assertion":
+            # After code should have expect with matcher
+            if "expect(" not in after_code:
+                return False
+            # Should have at least one matcher
+            has_matcher = any(
+                matcher in after_code
+                for matcher in [
+                    ".toBe(",
+                    ".toEqual(",
+                    ".toHaveBeenCalled",
+                    ".toThrow(",
+                    ".toMatch",
+                    ".toContain(",
+                ]
+            )
+            if not has_matcher:
+                return False
+
+        if transform_type == "test-setup":
+            # After code should have setup/teardown hooks
+            has_hook = any(
+                hook in after_code
+                for hook in ["beforeEach(", "afterEach(", "beforeAll(", "afterAll("]
+            )
+            if not has_hook:
+                return False
+
+        if transform_type == "test-mock":
+            # After code should have mock setup
+            has_mock = any(
+                mock in after_code
+                for mock in [
+                    "vi.mock(",
+                    "jest.mock(",
+                    "vi.fn(",
+                    "jest.fn(",
+                    ".mockResolvedValue(",
+                    ".mockReturnValue(",
+                ]
+            )
+            if not has_mock:
                 return False
 
         return True

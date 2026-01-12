@@ -3,7 +3,10 @@
 Provides commands for:
 - init: Initialize a project for mochi
 - train: Train base or project adapters
+- pack: Package adapter for distribution
+- install: Install adapter from URL or local file
 - serve: Start MCP server for Claude Code integration
+- list: List installed adapters
 """
 
 from __future__ import annotations
@@ -312,6 +315,140 @@ def _expand_adapter_path(path: str | None) -> Path | None:
 
 
 @main.command()
+@click.argument("adapter_dir", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    help="Output path for package",
+)
+@click.option(
+    "--name", "-n",
+    help="Package name (default: directory name)",
+)
+@click.option(
+    "--description", "-d",
+    default="",
+    help="Package description",
+)
+@click.option(
+    "--no-compress",
+    is_flag=True,
+    help="Create uncompressed directory package instead of .tar.gz",
+)
+def pack(
+    adapter_dir: Path,
+    output: Path | None,
+    name: str | None,
+    description: str,
+    no_compress: bool,
+) -> None:
+    """Package an adapter for distribution.
+
+    Creates a .mochi.tar.gz archive that can be shared with team members.
+
+    \b
+    Examples:
+      # Pack adapter
+      mochi pack output/my-project-adapter
+
+      # Pack with custom name
+      mochi pack output/adapter --name my-project --output ./dist/
+
+      # Create uncompressed package
+      mochi pack output/adapter --no-compress
+    """
+    from ..packaging import pack_adapter
+
+    click.echo(f"Packing adapter: {adapter_dir}")
+
+    try:
+        package_path = pack_adapter(
+            adapter_dir=adapter_dir,
+            output_path=output,
+            name=name,
+            description=description,
+            compress=not no_compress,
+        )
+        click.echo(f"Package created: {package_path}")
+        click.echo(f"Size: {package_path.stat().st_size / 1024 / 1024:.1f} MB")
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
+
+
+@main.command()
+@click.argument("source")
+@click.option(
+    "--name", "-n",
+    help="Override adapter name",
+)
+@click.option(
+    "--target", "-t",
+    type=click.Path(path_type=Path),
+    help="Installation directory (default: ~/.mochi/adapters/)",
+)
+def install(source: str, name: str | None, target: Path | None) -> None:
+    """Install an adapter from URL or local file.
+
+    SOURCE can be:
+    - Local file path: ./my-adapter.mochi.tar.gz
+    - HTTP URL: https://example.com/adapter.mochi.tar.gz
+    - S3 URL: s3://bucket/path/adapter.mochi.tar.gz
+
+    The base model will be automatically downloaded on first use.
+
+    \b
+    Examples:
+      # Install from local file
+      mochi install ./my-project.mochi.tar.gz
+
+      # Install from URL
+      mochi install https://example.com/adapters/my-project.mochi.tar.gz
+
+      # Install from S3
+      mochi install s3://my-bucket/adapters/my-project.mochi.tar.gz
+
+      # Install with custom name
+      mochi install ./adapter.tar.gz --name my-project
+    """
+    from ..packaging import install_package
+
+    click.echo(f"Installing adapter from: {source}")
+
+    try:
+        install_path = install_package(
+            source=source,
+            target_dir=target,
+            name=name,
+        )
+        click.echo(f"Installed to: {install_path}")
+
+        # Show manifest info
+        from ..packaging import MochiPackage
+        package = MochiPackage(install_path)
+        manifest = package.manifest
+
+        click.echo(f"\nAdapter: {manifest.name}")
+        click.echo(f"Type: {manifest.adapter_type}")
+        click.echo(f"Base model: {manifest.base_model}")
+        if manifest.description:
+            click.echo(f"Description: {manifest.description}")
+
+        click.echo(f"\nTo use with Claude Code, add to settings.json:")
+        click.echo(f'  "mochi": {{"command": "mochi", "args": ["serve", "--adapter", "{install_path}"]}}')
+
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
+
+
+@main.command()
+@click.option(
+    "--adapter", "-a",
+    type=str,
+    help="Adapter path (supports ~) - auto-detects from ~/.mochi/adapters/ if not specified",
+)
 @click.option(
     "--base", "-b",
     type=str,
@@ -324,8 +461,13 @@ def _expand_adapter_path(path: str | None) -> Path | None:
 )
 @click.option(
     "--model", "-m",
-    default="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
-    help="Base model name (if no adapters specified)",
+    default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+    help="Base model name (auto-downloaded if not cached)",
+)
+@click.option(
+    "--preset",
+    type=click.Choice(["qwen3-coder", "qwen3-coder-base", "gpt-oss"]),
+    help="Use preset configuration",
 )
 @click.option(
     "--base-weight",
@@ -340,35 +482,51 @@ def _expand_adapter_path(path: str | None) -> Path | None:
     help="Weight for project adapter (0.0-1.0)",
 )
 def serve(
+    adapter: str | None,
     base: str | None,
     project: str | None,
     model: str,
+    preset: str | None,
     base_weight: float,
     project_weight: float,
 ) -> None:
     """Start MCP server for Claude Code integration.
 
-    The server provides the domain_query tool for code completion
-    using the specified adapters.
+    The server provides code completion tools using trained adapters.
+    Base model is automatically downloaded on first run (~16GB).
 
-    Adapter paths support ~ expansion (e.g., ~/.mochi/adapters/my-project).
-
-    The server communicates over stdio using JSON-RPC 2.0 protocol.
-    Configure Claude Code to use this server via mcp_servers config.
+    If no adapter is specified, looks for installed adapters in ~/.mochi/adapters/.
 
     \b
     Examples:
-      # Local adapter
-      mochi serve --base ~/.mochi/adapters/my-project
+      # Auto-detect installed adapter
+      mochi serve
 
-      # HuggingFace Hub adapter (public)
-      mochi serve --base CAPHTECH/mochi-base-ts-v1
+      # Use specific adapter
+      mochi serve --adapter ~/.mochi/adapters/my-project
+
+      # Use preset
+      mochi serve --preset qwen3-coder
     """
     from ..serving import start_server
 
     click.echo("Starting mochi MCP server...", err=True)
 
-    # Expand paths
+    # Determine adapter path
+    adapter_path = None
+    if adapter:
+        adapter_path = _expand_adapter_path(adapter)
+    elif not base and not project and not preset:
+        # Auto-detect from installed adapters
+        from ..packaging import get_default_adapter
+        adapter_path = get_default_adapter()
+        if adapter_path:
+            click.echo(f"Auto-detected adapter: {adapter_path}", err=True)
+        else:
+            click.echo("No adapters installed. Using base model only.", err=True)
+            click.echo("Install an adapter with: mochi install <package>", err=True)
+
+    # Expand paths for base/project
     base_path = _expand_adapter_path(base) if base and "/" in base and not base.startswith(("http", "hf:")) else None
     project_path = _expand_adapter_path(project) if project else None
 
@@ -376,14 +534,19 @@ def serve(
     base_adapter_arg = base_path or base
     project_adapter_arg = project_path or project
 
+    # If adapter specified via --adapter, use it as project adapter
+    if adapter_path and not project_adapter_arg:
+        project_adapter_arg = adapter_path
+
     if base_adapter_arg:
         click.echo(f"Base Adapter: {base_adapter_arg}", err=True)
     if project_adapter_arg:
         click.echo(f"Project Adapter: {project_adapter_arg}", err=True)
-    if not base_adapter_arg and not project_adapter_arg:
-        click.echo("Warning: No adapters specified. Using base model only.", err=True)
+    if preset:
+        click.echo(f"Preset: {preset}", err=True)
 
     click.echo(f"Model: {model}", err=True)
+    click.echo("Note: Model will be downloaded automatically if not cached (~16GB)", err=True)
     click.echo(f"Weights: base={base_weight}, project={project_weight}", err=True)
     click.echo("Server ready. Waiting for JSON-RPC requests on stdin...", err=True)
 
@@ -394,44 +557,39 @@ def serve(
         base_model=model,
         base_weight=base_weight,
         project_weight=project_weight,
+        preset=preset,
     )
 
 
-@main.command()
+@main.command("list")
 @click.option(
     "--adapters-dir", "-a",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    default=Path("adapters"),
-    help="Adapters directory to scan",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Adapters directory to scan (default: ~/.mochi/adapters/)",
 )
-def list(adapters_dir: Path) -> None:
-    """List available adapters."""
-    from ..adapters.registry import AdapterRegistry
+def list_adapters(adapters_dir: Path | None) -> None:
+    """List installed adapters."""
+    from ..packaging import list_installed_adapters, DEFAULT_ADAPTERS_DIR
 
-    registry = AdapterRegistry(adapters_dir)
-    count = registry.discover_all()
+    target_dir = adapters_dir or DEFAULT_ADAPTERS_DIR
+    adapters = list_installed_adapters(target_dir)
 
-    if count == 0:
-        click.echo(f"No adapters found in {adapters_dir}")
+    if not adapters:
+        click.echo(f"No adapters found in {target_dir}")
+        click.echo("\nInstall an adapter with:")
+        click.echo("  mochi install <package-url>")
         return
 
-    click.echo(f"Found {count} adapters:\n")
+    click.echo(f"Installed adapters ({target_dir}):\n")
 
-    # List base adapters
-    base_adapters = registry.list_base_adapters()
-    if base_adapters:
-        click.echo("Base Adapters:")
-        for name, info in base_adapters.items():
-            patterns = ", ".join(info.get("patterns", []))
-            click.echo(f"  {name}: {patterns}")
-
-    # List project adapters
-    project_adapters = registry.list_project_adapters()
-    if project_adapters:
-        click.echo("\nProject Adapters:")
-        for name, info in project_adapters.items():
-            base = info.get("base_adapter", "none")
-            click.echo(f"  {name} (base: {base})")
+    for adapter in adapters:
+        click.echo(f"  {adapter['name']}")
+        click.echo(f"    Type: {adapter['type']}")
+        click.echo(f"    Model: {adapter['base_model']}")
+        click.echo(f"    Path: {adapter['path']}")
+        if adapter.get('description'):
+            click.echo(f"    Description: {adapter['description']}")
+        click.echo()
 
 
 # Legacy commands from old CLI (for backward compatibility)

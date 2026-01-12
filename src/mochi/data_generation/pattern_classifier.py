@@ -83,6 +83,33 @@ class PatternClassifier:
             "Add schema validation to this code",
             "Add assertions to verify input",
         ],
+        # Test patterns
+        "test-structure": [
+            "Write a unit test for this function",
+            "Create a test case for this implementation",
+            "Complete the test describe/it structure",
+            "Write the test body with proper assertions",
+            "Add a test case for this behavior",
+        ],
+        "test-assertion": [
+            "Add assertions to verify the behavior",
+            "Write expect statements to validate",
+            "Add proper assertions for this test",
+            "Complete the expect statements",
+            "Verify the expected behavior with assertions",
+        ],
+        "test-setup": [
+            "Set up test fixtures",
+            "Write the setup/teardown for this test",
+            "Initialize test dependencies in beforeEach",
+            "Add proper test setup and cleanup",
+        ],
+        "test-mock": [
+            "Set up mocks for this dependency",
+            "Create mock implementations",
+            "Mock the external dependencies",
+            "Write mock setup for this test",
+        ],
     }
 
     # Quality heuristics for each transform type
@@ -133,6 +160,54 @@ class PatternClassifier:
                 r"z\.\w+\s*\(\)",  # Zod schema
                 r"\.parse\s*\(",  # Schema parsing
                 r"assert\w*\s*\(",  # Assertions
+            ],
+            "bad": [],
+        },
+        # Test patterns
+        "test-structure": {
+            "good": [
+                r"describe\s*\(['\"]",  # describe block with name
+                r"it\s*\(['\"]",  # it block with name
+                r"test\s*\(['\"]",  # test block with name
+                r"expect\s*\(",  # Has assertions
+            ],
+            "bad": [
+                r"it\.skip\s*\(",  # Skipped test
+                r"describe\.skip\s*\(",  # Skipped describe
+                r"it\s*\(['\"]['\"]",  # Empty test name
+            ],
+        },
+        "test-assertion": {
+            "good": [
+                r"expect\s*\([^)]+\)\s*\.\w+",  # Complete expect chain
+                r"\.toBe\s*\(",  # toBe assertion
+                r"\.toEqual\s*\(",  # toEqual assertion
+                r"\.toHaveBeenCalled",  # Mock assertion
+                r"\.toThrow\s*\(",  # Error assertion
+            ],
+            "bad": [
+                r"expect\s*\(\s*\)",  # Empty expect
+            ],
+        },
+        "test-setup": {
+            "good": [
+                r"beforeEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function setup
+                r"afterEach\s*\(\s*(?:async\s*)?\(\s*\)\s*=>",  # Arrow function teardown
+                r"beforeAll\s*\(",  # beforeAll hook
+                r"afterAll\s*\(",  # afterAll hook
+            ],
+            "bad": [
+                r"beforeEach\s*\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)",  # Empty beforeEach
+            ],
+        },
+        "test-mock": {
+            "good": [
+                r"vi\.mock\s*\(['\"]",  # Vitest mock with path
+                r"jest\.mock\s*\(['\"]",  # Jest mock with path
+                r"vi\.fn\s*\(\s*\)",  # Vitest mock function
+                r"jest\.fn\s*\(\s*\)",  # Jest mock function
+                r"\.mockResolvedValue\s*\(",  # Mock resolved value
+                r"\.mockReturnValue\s*\(",  # Mock return value
             ],
             "bad": [],
         },

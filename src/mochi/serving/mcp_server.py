@@ -45,7 +45,7 @@ class MCPServerConfig:
     backend: str = "mlx"
 
     # Model settings
-    base_model: str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     # Adapter paths
     base_adapter_path: Path | None = None
@@ -68,6 +68,12 @@ class MCPServerConfig:
     # LSP settings
     use_lsp_context: bool = True
     lsp_context_lines: int = 50
+
+    # Project root for LSP context extraction
+    # If None, LSP context will not be available
+    project_root: Path | None = None
+    lsp_language: str = "typescript"
+    schema_path: Path | None = None
 
 
 class MCPServer:
@@ -230,6 +236,7 @@ class MCPServer:
         """
         self.config = config or MCPServerConfig()
         self._engine = inference_engine
+        self._context_extractor = None  # ContextExtractor for LSP context
         self._initialized = False
 
         # Resource storage
@@ -263,6 +270,8 @@ class MCPServer:
 
     def _create_inference_engine(self) -> None:
         """Create inference engine from config."""
+        import asyncio
+
         from ..adapters.adapter_stack import AdapterStack
         from ..adapters.base_adapter import BaseAdapter
         from ..adapters.project_adapter import ProjectAdapter
@@ -307,17 +316,67 @@ class MCPServer:
             lsp_context_lines=self.config.lsp_context_lines,
         )
 
+        # Initialize ContextExtractor if project_root is specified
+        context_extractor = None
+        if self.config.project_root and self.config.use_lsp_context:
+            try:
+                context_extractor = self._create_context_extractor()
+                logger.info(f"ContextExtractor initialized for: {self.config.project_root}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ContextExtractor: {e}")
+                # Continue without LSP context
+
         if len(adapters) > 1:
             stack = AdapterStack(adapters)
             self._engine = InferenceEngine(
                 adapter_stack=stack,
+                context_extractor=context_extractor,
                 config=inference_config,
             )
         else:
             self._engine = InferenceEngine(
                 adapter=adapters[0][0],
+                context_extractor=context_extractor,
                 config=inference_config,
             )
+
+        # Store for cleanup
+        self._context_extractor = context_extractor
+
+    def _create_context_extractor(self):
+        """Create ContextExtractor for LSP context.
+
+        Returns:
+            ContextExtractor instance or None if creation fails
+        """
+        import asyncio
+
+        from ..lsp.client import LSPClient
+        from ..lsp.context_extractor import ContextExtractor
+
+        try:
+            # Create LSP client
+            lsp_client = LSPClient(
+                language=self.config.lsp_language,
+                project_root=self.config.project_root,
+            )
+
+            # Start LSP client (async)
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(lsp_client.start())
+            finally:
+                loop.close()
+
+            # Create extractor
+            return ContextExtractor(
+                lsp_client=lsp_client,
+                schema_path=self.config.schema_path,
+            )
+
+        except Exception as e:
+            logger.warning(f"ContextExtractor creation failed: {e}")
+            return None
 
     def _ensure_initialized(self) -> None:
         """Ensure server is initialized (lazy initialization)."""
@@ -844,16 +903,36 @@ class MCPServer:
 
     def shutdown(self) -> None:
         """Shutdown server and cleanup resources."""
+        import asyncio
+
+        # Cleanup LSP client if present
+        if self._context_extractor:
+            try:
+                lsp_client = self._context_extractor.lsp
+                if lsp_client:
+                    loop = asyncio.new_event_loop()
+                    try:
+                        loop.run_until_complete(lsp_client.stop())
+                    finally:
+                        loop.close()
+            except Exception as e:
+                logger.debug(f"LSP client cleanup error: {e}")
+
+        self._context_extractor = None
         self._initialized = False
         self._engine = None
 
 
 def start_server(
-    base_adapter: Path | None = None,
-    project_adapter: Path | None = None,
-    base_model: str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+    base_adapter: Path | str | None = None,
+    project_adapter: Path | str | None = None,
+    base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
     base_weight: float = 0.3,
     project_weight: float = 0.7,
+    preset: str | None = None,
+    project_root: Path | str | None = None,
+    lsp_language: str = "typescript",
+    schema_path: Path | str | None = None,
 ) -> None:
     """Start MCP server with specified adapters.
 
@@ -863,13 +942,42 @@ def start_server(
         base_model: Base model name
         base_weight: Weight for base adapter
         project_weight: Weight for project adapter
+        preset: Preset configuration name (qwen3-coder, qwen3-coder-base, gpt-oss)
+        project_root: Project root for LSP context extraction
+        lsp_language: Language for LSP (typescript, python, etc.)
+        schema_path: Path to schema.yaml for DB schema context
     """
+    # Apply preset if specified
+    if preset:
+        try:
+            from ..mcp.inference_mlx import PRESETS
+            if preset in PRESETS:
+                preset_config = PRESETS[preset]
+                base_model = preset_config.get("model_path", base_model)
+                default_adapter = preset_config.get("default_adapter")
+                if default_adapter and not project_adapter:
+                    project_adapter = default_adapter
+                logger.info(f"Applied preset '{preset}': model={base_model}")
+            else:
+                logger.warning(f"Unknown preset: {preset}")
+        except ImportError:
+            logger.warning("Could not load PRESETS from inference_mlx")
+
+    # Convert string paths to Path objects
+    base_adapter_path = Path(base_adapter) if isinstance(base_adapter, str) else base_adapter
+    project_adapter_path = Path(project_adapter) if isinstance(project_adapter, str) else project_adapter
+    project_root_path = Path(project_root) if isinstance(project_root, str) else project_root
+    schema_path_obj = Path(schema_path) if isinstance(schema_path, str) else schema_path
+
     config = MCPServerConfig(
         base_model=base_model,
-        base_adapter_path=base_adapter,
-        project_adapter_path=project_adapter,
+        base_adapter_path=base_adapter_path,
+        project_adapter_path=project_adapter_path,
         base_weight=base_weight,
         project_weight=project_weight,
+        project_root=project_root_path,
+        lsp_language=lsp_language,
+        schema_path=schema_path_obj,
     )
 
     server = MCPServer(config=config)
@@ -887,11 +995,19 @@ if __name__ == "__main__":
     parser.add_argument("--project", type=Path, help="Project adapter directory")
     parser.add_argument(
         "--model",
-        default="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+        default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
         help="Base model name",
+    )
+    parser.add_argument(
+        "--preset",
+        choices=["qwen3-coder", "qwen3-coder-base", "gpt-oss"],
+        help="Use preset configuration",
     )
     parser.add_argument("--base-weight", type=float, default=0.3, help="Base adapter weight")
     parser.add_argument("--project-weight", type=float, default=0.7, help="Project adapter weight")
+    parser.add_argument("--project-root", type=Path, help="Project root for LSP context extraction")
+    parser.add_argument("--lsp-language", default="typescript", help="Language for LSP (typescript, python, etc.)")
+    parser.add_argument("--schema", type=Path, help="Path to schema.yaml for DB context")
 
     args = parser.parse_args()
 
@@ -901,4 +1017,8 @@ if __name__ == "__main__":
         base_model=args.model,
         base_weight=args.base_weight,
         project_weight=args.project_weight,
+        preset=args.preset,
+        project_root=args.project_root,
+        lsp_language=args.lsp_language,
+        schema_path=args.schema,
     )

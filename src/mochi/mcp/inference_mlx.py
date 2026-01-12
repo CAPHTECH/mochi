@@ -359,6 +359,11 @@ class MLXInferenceEngine:
             "default_adapter": _PROJECT_ROOT / "output/mlx-qwen3-coder/adapter",
             "max_memory_gb": 64.0,  # MoE with ~3B active params
         },
+        "qwen3-coder-base": {
+            "model_path": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+            "default_adapter": _PROJECT_ROOT / "output/base-adapter-30b/adapter",
+            "max_memory_gb": 64.0,  # Base adapter only (common patterns)
+        },
         "gpt-oss": {
             "model_path": "lmstudio-community/gpt-oss-20b-MLX-8bit",
             "default_adapter": _PROJECT_ROOT / "output/gpt-oss-8bit-lsp/adapter",

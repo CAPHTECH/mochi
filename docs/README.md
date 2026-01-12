@@ -146,6 +146,35 @@ print(result.response)
 
 ## Adapter Distribution
 
+### Quick Distribution with `mochi pack` / `mochi install`
+
+```bash
+# 1. Package trained adapter
+mochi pack ./output/my-project-adapter --name my-project
+# Creates: my-project.mochi.tar.gz (~500MB-3GB depending on model)
+
+# 2. Share package (upload to S3, shared drive, etc.)
+aws s3 cp my-project.mochi.tar.gz s3://my-bucket/adapters/
+
+# 3. Team members install
+mochi install s3://my-bucket/adapters/my-project.mochi.tar.gz
+# or from local file:
+mochi install ./my-project.mochi.tar.gz
+
+# 4. Start server (auto-detects installed adapter)
+mochi serve
+```
+
+**.mochi package structure:**
+```
+my-project.mochi/
+├── manifest.json           # Package metadata (name, model, version)
+├── adapter_config.json     # Adapter configuration
+└── adapters.safetensors    # LoRA weights
+```
+
+### Storage Options
+
 | Storage Option | Use Case | Notes |
 |----------------|----------|-------|
 | **Local path** | Single developer | `~/.mochi/adapters/` |
@@ -153,13 +182,7 @@ print(result.response)
 | **Git LFS** | Version controlled | In project repo |
 | **HuggingFace Hub** | Public adapters | For shared base adapters |
 
-**Adapter files (~50MB):**
-```
-adapter/
-├── adapter_config.json      # Metadata
-├── adapters.safetensors     # LoRA weights
-└── tokenizer files...       # Tokenizer config
-```
+**Note:** Base model (~16GB) is automatically downloaded by mlx_lm on first run. Only the adapter package needs to be distributed.
 
 ## CLI Commands
 
@@ -169,8 +192,10 @@ adapter/
 | `mochi prepare` | Prepare training data |
 | `mochi train base` | Train Base Adapter |
 | `mochi train project` | Train Project Adapter |
-| `mochi serve` | Start MCP server |
-| `mochi list` | List available adapters |
+| `mochi pack` | Package adapter for distribution (.mochi.tar.gz) |
+| `mochi install` | Install adapter from URL or local file |
+| `mochi serve` | Start MCP server (auto-detects installed adapters) |
+| `mochi list` | List installed adapters |
 
 ## MCP Tools
 
