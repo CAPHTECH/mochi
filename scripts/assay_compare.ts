@@ -76,11 +76,13 @@ function parseArgs(args: string[]): {
   outputPath: string;
   includeMochiOnly: boolean;
   ollamaEndpoint: string;
+  mochiPreset: string;
 } {
   let model = "gpt-oss:120b";
   let outputPath = "output/comparison-results.json";
   let includeMochiOnly = false;
   let ollamaEndpoint = "http://localhost:11434";
+  let mochiPreset = "qwen3-coder";
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--model" && args[i + 1]) {
@@ -91,21 +93,24 @@ function parseArgs(args: string[]): {
       includeMochiOnly = true;
     } else if (args[i] === "--ollama-endpoint" && args[i + 1]) {
       ollamaEndpoint = args[++i];
+    } else if (args[i] === "--preset" && args[i + 1]) {
+      mochiPreset = args[++i];
     }
   }
 
-  return { model, outputPath, includeMochiOnly, ollamaEndpoint };
+  return { model, outputPath, includeMochiOnly, ollamaEndpoint, mochiPreset };
 }
 
 async function main() {
   const args = process.argv.slice(2);
-  const { model, outputPath, includeMochiOnly, ollamaEndpoint } = parseArgs(args);
+  const { model, outputPath, includeMochiOnly, ollamaEndpoint, mochiPreset } = parseArgs(args);
 
   console.log("=".repeat(70));
   console.log("Mochi Comparison Evaluation");
   console.log("=".repeat(70));
   console.log();
   console.log(`Model: ${model}`);
+  console.log(`Mochi preset: ${mochiPreset}`);
   console.log(`Ollama endpoint: ${ollamaEndpoint}`);
   console.log(`Include mochi-only: ${includeMochiOnly}`);
   console.log();
@@ -122,6 +127,7 @@ async function main() {
     ollamaEndpoint,
     ollamaModel: model,
     includeMochiOnly,
+    mochiPreset,
   });
 
   // Warmup

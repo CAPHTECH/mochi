@@ -53,8 +53,14 @@ export class MCPClient {
     }
   >();
   private connected = false;
+  private preset: string;
 
-  constructor(private pythonCommand: string = "python3") {}
+  constructor(
+    private pythonCommand: string = "python3",
+    preset: string = "qwen3-coder"
+  ) {
+    this.preset = preset;
+  }
 
   /**
    * Start the MCP server process
@@ -76,11 +82,13 @@ export class MCPClient {
   private async doConnect(): Promise<void> {
     // Use JSON.stringify to escape the path safely (prevents command injection)
     const srcPath = JSON.stringify(`${process.cwd()}/src`);
+    const presetStr = JSON.stringify(this.preset);
     const pythonCode = `
 import sys
 sys.path.insert(0, ${srcPath})
-from mochi.mcp.server import MochiMCPServer
-server = MochiMCPServer()
+from mochi.mcp.server import MochiMCPServer, ServerConfig
+config = ServerConfig(preset=${presetStr})
+server = MochiMCPServer(config)
 try:
     server.run_stdio()
 finally:

@@ -357,10 +357,12 @@ class MLXInferenceEngine:
         "qwen3-coder": {
             "model_path": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
             "default_adapter": _PROJECT_ROOT / "output/mlx-qwen3-coder/adapter",
+            "max_memory_gb": 64.0,  # MoE with ~3B active params
         },
         "gpt-oss": {
             "model_path": "lmstudio-community/gpt-oss-20b-MLX-8bit",
-            "default_adapter": _PROJECT_ROOT / "output/gptoss-20b-lsp/adapter",
+            "default_adapter": _PROJECT_ROOT / "output/gpt-oss-8bit-lsp/adapter",
+            "max_memory_gb": 128.0,  # 20B 8-bit needs more memory
         },
     }
 
@@ -387,12 +389,14 @@ class MLXInferenceEngine:
             model_p = model_path or preset_config["model_path"]
             self.model_path = str(model_p) if isinstance(model_p, Path) else model_p
             self.adapter_path = Path(adapter_path or preset_config["default_adapter"])
+            # Use preset's memory limit if not explicitly provided
+            self.max_memory_gb = preset_config.get("max_memory_gb", max_memory_gb)
         else:
             self.model_path = model_path or self.PRESETS["qwen3-coder"]["model_path"]
             self.adapter_path = Path(adapter_path) if adapter_path else None
+            self.max_memory_gb = max_memory_gb
 
         self.timeout_seconds = timeout_seconds
-        self.max_memory_gb = max_memory_gb
 
         self.model = None
         self.tokenizer = None

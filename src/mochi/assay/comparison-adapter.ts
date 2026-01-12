@@ -69,6 +69,8 @@ export interface ComparisonAdapterOptions {
   pythonCommand?: string;
   /** Whether to also run mochi-only evaluation */
   includeMochiOnly?: boolean;
+  /** Mochi preset: "qwen3-coder" or "gpt-oss" */
+  mochiPreset?: string;
 }
 
 export class ComparisonAdapter
@@ -78,13 +80,18 @@ export class ComparisonAdapter
   private mcpClient: MCPClient;
   private ollamaModel: string;
   private includeMochiOnly: boolean;
+  private mochiPreset: string;
 
   constructor(options: ComparisonAdapterOptions = {}) {
     this.ollamaClient = new OllamaClient({
       endpoint: options.ollamaEndpoint ?? "http://localhost:11434",
       defaultModel: options.ollamaModel ?? "gpt-oss:120b",
     });
-    this.mcpClient = new MCPClient(options.pythonCommand ?? "python3");
+    this.mochiPreset = options.mochiPreset ?? "qwen3-coder";
+    this.mcpClient = new MCPClient(
+      options.pythonCommand ?? "python3",
+      this.mochiPreset
+    );
     this.ollamaModel = options.ollamaModel ?? "gpt-oss:120b";
     this.includeMochiOnly = options.includeMochiOnly ?? false;
   }

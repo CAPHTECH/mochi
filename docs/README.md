@@ -10,6 +10,15 @@ A library that improves code completion accuracy using adapters trained on proje
 - **Lightweight** - Runs on 0.5B-3B parameter models
 - **Private Project Support** - Train and distribute adapters for private codebases
 
+## Supported Models
+
+| Model | Preset | Memory | Code Gen | Diff Gen | Pattern |
+|-------|--------|--------|----------|----------|---------|
+| **Qwen3-Coder-30B 4-bit** | `qwen3-coder` | 64GB | 5/5 | 5/5 | 4/5 |
+| GPT-OSS-20B 8-bit | `gpt-oss` | 128GB | 3/5 | 1/5 | 2/5 |
+
+**Recommendation**: Use `qwen3-coder` (default) for production. Better code generation and diff output.
+
 ## Installation
 
 ```bash
@@ -214,12 +223,16 @@ adapter/
 
 - Python 3.11+
 - macOS (Apple Silicon recommended) / Linux / Windows
-- Memory: 8GB+ recommended
+- Memory:
+  - Qwen3-Coder-30B 4-bit: 64GB+ recommended
+  - GPT-OSS-20B 8-bit: 128GB+ recommended
 
 ## Tech Stack
 
 - **Inference**: MLX (Apple Silicon) / PyTorch (CUDA)
-- **Base Model**: Qwen3-Coder-30B-A3B (4-bit MoE)
+- **Base Models**:
+  - Qwen3-Coder-30B-A3B 4-bit MoE (recommended)
+  - GPT-OSS-20B 8-bit
 - **Training**: LoRA/QLoRA
 - **Integration**: MCP (Model Context Protocol)
 
