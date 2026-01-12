@@ -243,7 +243,7 @@ class ProjectAdapter:
             base_adapter=config_data.get("base_adapter"),
             project_root=Path(config_data["project_root"]) if config_data.get("project_root") else None,
             languages=config_data.get("languages", ["typescript"]),
-            include_patterns=config_data.get("include_patterns", ["*.ts", "*.tsx"]),
+            _include_patterns=config_data.get("include_patterns"),
             exclude_patterns=config_data.get("exclude_patterns", ["node_modules/**"]),
             version=config_data.get("version", "1.0.0"),
             description=config_data.get("description", ""),
