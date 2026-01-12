@@ -164,7 +164,7 @@ class TrainingConfig:
     """Configuration for adapter training."""
 
     # Model settings
-    base_model: str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     # LoRA settings
     lora_rank: int = 8

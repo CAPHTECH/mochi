@@ -87,7 +87,7 @@ def main():
         return 1
 
     # Model
-    model = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     print("=" * 70)
     print("Project Adapter Training (kiri)")

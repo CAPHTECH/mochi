@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-MODEL="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"  # Small model for testing
+MODEL="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"  # Small model for testing
 DATA_DIR="data/combined-with-tests"
 OUTPUT_DIR="output/base-adapter-with-tests"
 
@@ -38,7 +38,7 @@ cat > "$OUTPUT_DIR/adapter_config.json" << 'CONFIG'
 {
   "name": "base-adapter-with-tests",
   "adapter_type": "base",
-  "base_model": "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+  "base_model": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
   "patterns": [
     "error-handling",
     "null-safety",

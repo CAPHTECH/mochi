@@ -26,9 +26,8 @@ def main():
     valid_file = data_dir / "valid.jsonl"
     output_dir = project_root / "output" / "base-adapter"
 
-    # Model - use smaller model for faster iteration
-    # Qwen2.5-Coder is optimized for code completion
-    model = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    # Model - Qwen3-Coder is optimized for code completion
+    model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     if not train_file.exists():
         print(f"ERROR: Training data not found at {train_file}")

@@ -700,10 +700,10 @@ def create_training_dataset(
     train_ratio: float = 0.9,
 ) -> tuple[Path, Path]:
     """
-    Create train/eval split and save to files.
+    Create train/valid split and save to files.
 
     Returns:
-        Tuple of (train_path, eval_path)
+        Tuple of (train_path, valid_path)
     """
     converter = AlpacaConverter(project_name)
     examples = converter.convert_chunks(chunks)
@@ -713,16 +713,16 @@ def create_training_dataset(
     split_idx = int(len(examples) * train_ratio)
 
     train_examples = examples[:split_idx]
-    eval_examples = examples[split_idx:]
+    valid_examples = examples[split_idx:]
 
     output_dir = Path(output_dir)
     train_path = output_dir / "train.jsonl"
-    eval_path = output_dir / "eval.jsonl"
+    valid_path = output_dir / "valid.jsonl"
 
     converter.to_jsonl(train_examples, train_path)
-    converter.to_jsonl(eval_examples, eval_path)
+    converter.to_jsonl(valid_examples, valid_path)
 
-    return train_path, eval_path
+    return train_path, valid_path
 
 
 async def create_training_dataset_with_context(
@@ -734,22 +734,22 @@ async def create_training_dataset_with_context(
     schema_path: Path | None = None,
     train_ratio: float = 0.9,
 ) -> tuple[Path, Path]:
-    """Create train/eval split with LSP context and save to files.
+    """Create train/valid split with LSP context and save to files.
 
     Enhanced version that uses LSP to extract accurate type and method
     information for training examples.
 
     Args:
         chunks: List of code chunks
-        output_dir: Output directory for train/eval files
+        output_dir: Output directory for train/valid files
         project_root: Root directory of the project for LSP
         project_name: Project name for context
         language: Programming language (typescript, python, etc.)
         schema_path: Optional path to schema.yaml
-        train_ratio: Train/eval split ratio
+        train_ratio: Train/valid split ratio
 
     Returns:
-        Tuple of (train_path, eval_path)
+        Tuple of (train_path, valid_path)
     """
     from mochi.lsp.context_extractor import create_context_extractor
 
@@ -781,13 +781,13 @@ async def create_training_dataset_with_context(
     split_idx = int(len(examples) * train_ratio)
 
     train_examples = examples[:split_idx]
-    eval_examples = examples[split_idx:]
+    valid_examples = examples[split_idx:]
 
     output_dir = Path(output_dir)
     train_path = output_dir / "train.jsonl"
-    eval_path = output_dir / "eval.jsonl"
+    valid_path = output_dir / "valid.jsonl"
 
     converter.to_jsonl(train_examples, train_path)
-    converter.to_jsonl(eval_examples, eval_path)
+    converter.to_jsonl(valid_examples, valid_path)
 
-    return train_path, eval_path
+    return train_path, valid_path

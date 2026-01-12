@@ -103,7 +103,7 @@ def train() -> None:
 )
 @click.option(
     "--model", "-m",
-    default="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+    default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
     help="Base model name",
 )
 @click.option(
@@ -202,7 +202,7 @@ def train_base(
 )
 @click.option(
     "--model", "-m",
-    default="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+    default="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
     help="Base model name",
 )
 @click.option(
@@ -643,7 +643,7 @@ def prepare(repo: str, output: str, extensions: tuple[str, ...], project_name: s
     )
 
     click.echo(f"Training data saved to: {train_path}")
-    click.echo(f"Evaluation data saved to: {eval_path}")
+    click.echo(f"Validation data saved to: {eval_path}")
 
 
 if __name__ == "__main__":

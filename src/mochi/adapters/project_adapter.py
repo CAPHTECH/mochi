@@ -368,7 +368,7 @@ class ProjectAdapter:
         project_root: Path | str,
         name: str | None = None,
         base_adapter: BaseAdapter | None = None,
-        base_model: str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+        base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
         output_dir: Path | str | None = None,
         languages: list[str] | None = None,
         training_config: TrainingConfig | None = None,

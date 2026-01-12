@@ -39,7 +39,7 @@ class BaseAdapter:
 
         # Train new adapter
         adapter = BaseAdapter.train(
-            base_model="mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+            base_model="mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
             training_data=Path("data/common-patterns"),
             output_dir=Path("output/my-base-adapter"),
         )
@@ -316,7 +316,7 @@ class BaseAdapter:
 
         Args:
             name: Name for the adapter
-            base_model: Base model name (e.g., "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit")
+            base_model: Base model name (e.g., "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit")
             training_data: Path to training data directory (must contain train.jsonl)
             output_dir: Output directory for the adapter
             training_config: Training hyperparameters

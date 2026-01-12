@@ -21,6 +21,21 @@ A library that improves code completion accuracy using adapters trained on proje
 
 ## Installation
 
+### From GitHub (Current)
+
+```bash
+# Basic installation
+pip install git+https://github.com/CAPHTECH/mochi.git
+
+# For Apple Silicon (recommended)
+pip install "mochi[mlx] @ git+https://github.com/CAPHTECH/mochi.git"
+
+# Full installation with training capabilities
+pip install "mochi[mlx,training] @ git+https://github.com/CAPHTECH/mochi.git"
+```
+
+### From PyPI (After Publication)
+
 ```bash
 # Basic installation
 pip install mochi
@@ -30,6 +45,14 @@ pip install mochi[mlx]
 
 # Full installation with training capabilities
 pip install mochi[mlx,training]
+```
+
+### For Development
+
+```bash
+git clone https://github.com/CAPHTECH/mochi.git
+cd mochi
+pip install -e ".[dev]"
 ```
 
 ## Quick Start

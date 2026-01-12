@@ -47,7 +47,7 @@ class MochiConfig:
     data_dir: Path = field(default_factory=lambda: Path("data"))
 
     # Default base model
-    base_model: str = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     # Registered adapters
     base_adapters: dict[str, BaseAdapterConfig] = field(default_factory=dict)
@@ -122,7 +122,7 @@ class MochiConfig:
             adapters_dir=Path(data.get("adapters_dir", "adapters")),
             output_dir=Path(data.get("output_dir", "output")),
             data_dir=Path(data.get("data_dir", "data")),
-            base_model=data.get("base_model", "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"),
+            base_model=data.get("base_model", "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"),
         )
 
         # Load base adapters

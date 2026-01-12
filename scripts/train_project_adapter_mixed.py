@@ -23,7 +23,7 @@ def main():
     output_dir = project_root / "output" / "kiri-adapter-mixed"
 
     # Model
-    model = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    model = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     if not (data_dir / "train.jsonl").exists():
         print(f"ERROR: Mixed data not found at {data_dir}")

@@ -221,7 +221,7 @@ def run_evaluation(model_name: str, adapter_path: Path | None, test_cases: list[
 
 def main():
     project_root = Path(__file__).parent.parent
-    model_name = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    model_name = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     base_adapter = project_root / "output" / "base-adapter" / "adapter"
     project_adapter = project_root / "output" / "kiri-adapter" / "adapter"

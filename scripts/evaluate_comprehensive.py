@@ -230,7 +230,7 @@ def evaluate_adapter(model_name: str, adapter_path: Path | None, test_cases: lis
 
 def main():
     project_root = Path(__file__).parent.parent
-    model_name = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
+    model_name = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
 
     adapters = [
         (project_root / "output" / "base-adapter" / "adapter", "Base Adapter"),
