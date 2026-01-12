@@ -9,7 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
+
+from .language_specs import (
+    LanguageId,
+    get_file_patterns_for_languages,
+    get_test_file_patterns_for_languages,
+)
 
 
 class AdapterType(str, Enum):
@@ -17,6 +23,10 @@ class AdapterType(str, Enum):
 
     BASE = "base"
     PROJECT = "project"
+
+
+# Type alias for language specification (LanguageId or string for extensibility)
+LanguageSpec = Union[LanguageId, str]
 
 
 @dataclass
@@ -46,6 +56,8 @@ class BaseAdapterConfig(AdapterConfig):
     - type-safety
     - null-safety
     - validation
+
+    Supports multiple languages through LanguageId.
     """
 
     patterns: list[str] = field(
@@ -57,11 +69,31 @@ class BaseAdapterConfig(AdapterConfig):
             "validation",
         ]
     )
-    languages: list[str] = field(default_factory=lambda: ["typescript", "javascript"])
+    languages: list[LanguageSpec] = field(default_factory=lambda: ["typescript", "javascript"])
 
     def __post_init__(self) -> None:
         super().__post_init__()
         self.adapter_type = AdapterType.BASE
+        # Convert string languages to LanguageId where possible
+        self._normalize_languages()
+
+    def _normalize_languages(self) -> None:
+        """Convert string languages to LanguageId where possible."""
+        normalized = []
+        for lang in self.languages:
+            if isinstance(lang, str):
+                try:
+                    normalized.append(LanguageId(lang))
+                except ValueError:
+                    normalized.append(lang)  # Keep as string for unknown languages
+            else:
+                normalized.append(lang)
+        self.languages = normalized
+
+    @property
+    def file_patterns(self) -> list[str]:
+        """Get file patterns for configured languages."""
+        return get_file_patterns_for_languages(self.languages)
 
 
 @dataclass
@@ -73,14 +105,17 @@ class ProjectAdapterConfig(AdapterConfig):
     - Project naming conventions
     - Custom error classes
     - Domain-specific utilities
+
+    Supports multiple languages through LanguageId.
+    include_patterns is computed from languages by default.
     """
 
     base_adapter: str | None = None  # Reference to base adapter name
     project_root: Path | None = None
-    languages: list[str] = field(default_factory=lambda: ["typescript"])
-    include_patterns: list[str] = field(default_factory=lambda: ["*.ts", "*.tsx"])
+    languages: list[LanguageSpec] = field(default_factory=lambda: ["typescript"])
+    _include_patterns: list[str] | None = field(default=None, repr=False)
     exclude_patterns: list[str] = field(
-        default_factory=lambda: ["node_modules/**", "*.test.ts", "*.spec.ts"]
+        default_factory=lambda: ["node_modules/**", "*.test.ts", "*.spec.ts", "__pycache__/**"]
     )
 
     def __post_init__(self) -> None:
@@ -88,6 +123,42 @@ class ProjectAdapterConfig(AdapterConfig):
         self.adapter_type = AdapterType.PROJECT
         if isinstance(self.project_root, str):
             self.project_root = Path(self.project_root)
+        # Convert string languages to LanguageId where possible
+        self._normalize_languages()
+
+    def _normalize_languages(self) -> None:
+        """Convert string languages to LanguageId where possible."""
+        normalized = []
+        for lang in self.languages:
+            if isinstance(lang, str):
+                try:
+                    normalized.append(LanguageId(lang))
+                except ValueError:
+                    normalized.append(lang)  # Keep as string for unknown languages
+            else:
+                normalized.append(lang)
+        self.languages = normalized
+
+    @property
+    def include_patterns(self) -> list[str]:
+        """Get include patterns for configured languages.
+
+        If _include_patterns is set explicitly, use that.
+        Otherwise, compute from languages.
+        """
+        if self._include_patterns is not None:
+            return self._include_patterns
+        return get_file_patterns_for_languages(self.languages)
+
+    @include_patterns.setter
+    def include_patterns(self, value: list[str]) -> None:
+        """Set explicit include patterns."""
+        self._include_patterns = value
+
+    @property
+    def test_patterns(self) -> list[str]:
+        """Get test file patterns for configured languages."""
+        return get_test_file_patterns_for_languages(self.languages)
 
 
 @dataclass

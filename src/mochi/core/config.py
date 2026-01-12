@@ -11,12 +11,24 @@ from typing import Any
 import yaml
 
 from .exceptions import ConfigurationError
+from .language_specs import LanguageId
 from .types import (
     BaseAdapterConfig,
     InferenceConfig,
     ProjectAdapterConfig,
     TrainingConfig,
 )
+
+
+def _serialize_languages(languages: list) -> list[str]:
+    """Serialize languages list to strings for YAML/JSON output."""
+    result = []
+    for lang in languages:
+        if isinstance(lang, LanguageId):
+            result.append(lang.value)
+        else:
+            result.append(str(lang))
+    return result
 
 
 @dataclass
@@ -79,7 +91,7 @@ class MochiConfig:
                     "name": cfg.name,
                     "adapter_path": str(cfg.adapter_path) if cfg.adapter_path else None,
                     "patterns": cfg.patterns,
-                    "languages": cfg.languages,
+                    "languages": _serialize_languages(cfg.languages),
                 }
                 for name, cfg in self.base_adapters.items()
             },
@@ -89,6 +101,7 @@ class MochiConfig:
                     "adapter_path": str(cfg.adapter_path) if cfg.adapter_path else None,
                     "base_adapter": cfg.base_adapter,
                     "project_root": str(cfg.project_root) if cfg.project_root else None,
+                    "languages": _serialize_languages(cfg.languages),
                 }
                 for name, cfg in self.project_adapters.items()
             },
@@ -135,6 +148,7 @@ class MochiConfig:
                     adapter_path=Path(adapter_data["adapter_path"]) if adapter_data.get("adapter_path") else None,
                     base_adapter=adapter_data.get("base_adapter"),
                     project_root=Path(adapter_data["project_root"]) if adapter_data.get("project_root") else None,
+                    languages=adapter_data.get("languages", ["typescript"]),
                 )
             )
 

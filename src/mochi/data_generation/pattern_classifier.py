@@ -2,6 +2,8 @@
 
 Provides both rule-based classification (fast, no external dependencies)
 and optional LLM-assisted classification (more accurate, requires API).
+
+Supports multiple languages through the language_specs module.
 """
 
 from __future__ import annotations
@@ -12,6 +14,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from mochi.core.language_specs import (
+    LanguageId,
+    get_language_spec,
+    detect_language,
+)
 from .diff_extractor import CodeTransformPair
 
 logger = logging.getLogger(__name__)
@@ -47,7 +54,7 @@ class PatternClassifier:
     validation for borderline cases.
     """
 
-    # Instruction templates for each transform type
+    # Instruction templates for each transform type (language-agnostic or TypeScript)
     INSTRUCTION_TEMPLATES: dict[str, list[str]] = {
         "error-handling": [
             "Add error handling to this function",
@@ -112,7 +119,71 @@ class PatternClassifier:
         ],
     }
 
-    # Quality heuristics for each transform type
+    # Python-specific instruction templates
+    PYTHON_INSTRUCTION_TEMPLATES: dict[str, list[str]] = {
+        "error-handling": [
+            "Add error handling to this function",
+            "Wrap this code with try-except and handle exceptions appropriately",
+            "Add proper error handling following Python best practices",
+            "Handle potential exceptions in this code",
+            "Add error recovery with specific exception types",
+        ],
+        "null-safety": [
+            "Add None safety checks to this code",
+            "Handle None values safely with proper guards",
+            "Add proper None checks to prevent runtime errors",
+            "Use Optional type hints and handle None appropriately",
+            "Add defensive None handling",
+        ],
+        "type-safety": [
+            "Add type hints to this code",
+            "Improve type safety of this function",
+            "Add proper Python type annotations",
+            "Add type guards using isinstance checks",
+            "Strengthen the types using typing module",
+        ],
+        "async-await": [
+            "Convert this code to async/await",
+            "Refactor to use async/await pattern",
+            "Modernize this async code using await",
+            "Convert callback-based code to async/await",
+        ],
+        "validation": [
+            "Add input validation to this function",
+            "Add runtime validation using pydantic",
+            "Validate the input parameters",
+            "Add schema validation to this code",
+            "Add assertions to verify input",
+        ],
+        # Test patterns
+        "test-structure": [
+            "Write a pytest test for this function",
+            "Create a test case for this implementation",
+            "Write the test function with proper assertions",
+            "Add a pytest test for this behavior",
+        ],
+        "test-assertion": [
+            "Add assert statements to verify the behavior",
+            "Write assertions to validate",
+            "Add proper assertions for this test",
+            "Complete the assert statements",
+            "Verify the expected behavior with assertions",
+        ],
+        "test-setup": [
+            "Set up test fixtures using pytest",
+            "Write a pytest fixture for this test",
+            "Initialize test dependencies with fixtures",
+            "Add proper test setup using @pytest.fixture",
+        ],
+        "test-mock": [
+            "Set up mocks using @patch decorator",
+            "Create mock implementations with MagicMock",
+            "Mock the external dependencies",
+            "Write mock setup using pytest-mock",
+        ],
+    }
+
+    # Quality heuristics for each transform type (TypeScript/JavaScript)
     QUALITY_PATTERNS: dict[str, dict[str, list[str]]] = {
         "error-handling": {
             "good": [
@@ -213,16 +284,115 @@ class PatternClassifier:
         },
     }
 
-    # LLM classification prompt
-    CLASSIFICATION_PROMPT = """Analyze this code transformation and classify it.
+    # Python-specific quality patterns
+    PYTHON_QUALITY_PATTERNS: dict[str, dict[str, list[str]]] = {
+        "error-handling": {
+            "good": [
+                r"try\s*:[\s\S]+except\s+",  # Complete try-except
+                r"raise\s+\w+Error",  # Typed errors
+                r"except\s+\w+\s+as\s+\w+",  # Named exception
+                r"except\s+\([^)]+\)",  # Multiple exception types
+            ],
+            "bad": [
+                r"except\s*:\s*pass",  # Empty except with pass
+                r"except\s+Exception\s*:",  # Catching broad Exception
+                r"except\s*:",  # Bare except
+            ],
+        },
+        "null-safety": {
+            "good": [
+                r"if\s+\w+\s+is\s+not\s+None",  # Explicit None check
+                r"if\s+\w+\s+is\s+None",  # None check
+                r"\w+\s+or\s+['\"\w]",  # Default value with or
+                r"Optional\[",  # Optional type hint
+            ],
+            "bad": [],
+        },
+        "type-safety": {
+            "good": [
+                r":\s*[A-Z][a-zA-Z0-9_\[\]]+",  # Type annotation
+                r"->\s*[A-Z]\w+",  # Return type annotation
+                r"isinstance\s*\(",  # Type guard
+                r"@dataclass",  # Dataclass
+            ],
+            "bad": [
+                r":\s*Any\b",  # Any type
+            ],
+        },
+        "async-await": {
+            "good": [
+                r"async\s+def\s+\w+",  # Async function
+                r"await\s+\w+",  # Await expression
+            ],
+            "bad": [],
+        },
+        "validation": {
+            "good": [
+                r"class\s+\w+\s*\(\s*BaseModel\s*\)",  # Pydantic model
+                r"@validator\s*\(",  # Pydantic validator
+                r"@field_validator\s*\(",  # Pydantic v2 validator
+                r"assert\s+",  # Assert statements
+            ],
+            "bad": [],
+        },
+        # Test patterns
+        "test-structure": {
+            "good": [
+                r"def\s+test_\w+",  # Test function
+                r"class\s+Test\w+",  # Test class
+                r"assert\s+",  # Has assertions
+                r"@pytest\.mark\.",  # Pytest marker
+            ],
+            "bad": [
+                r"@pytest\.mark\.skip",  # Skipped test
+                r"def\s+test_\s*\(",  # Empty test name
+            ],
+        },
+        "test-assertion": {
+            "good": [
+                r"assert\s+\w+\s*==",  # Equality assertion
+                r"assert\s+\w+\s+in\s+",  # Membership assertion
+                r"pytest\.raises\s*\(",  # Exception assertion
+                r"assert\s+not\s+",  # Negation assertion
+            ],
+            "bad": [
+                r"assert\s+True",  # Trivial assertion
+                r"assert\s+1\s*==\s*1",  # Trivial assertion
+            ],
+        },
+        "test-setup": {
+            "good": [
+                r"@pytest\.fixture",  # Pytest fixture
+                r"def\s+\w+\s*\(\s*\w+\s*\)",  # Fixture parameter
+                r"yield\s+",  # Fixture with cleanup
+            ],
+            "bad": [
+                r"@pytest\.fixture\s*\(\s*\)\s*\ndef\s+\w+.*:\s*pass",  # Empty fixture
+            ],
+        },
+        "test-mock": {
+            "good": [
+                r"@patch\s*\(['\"]",  # Patch with path
+                r"MagicMock\s*\(",  # MagicMock
+                r"mocker\.patch",  # pytest-mock
+                r"\.return_value\s*=",  # Mock return value
+            ],
+            "bad": [
+                r"@patch\s*\(\s*\)",  # Empty patch
+            ],
+        },
+    }
+
+    # LLM classification prompt (language-aware)
+    CLASSIFICATION_PROMPT = """Analyze this {language} code transformation and classify it.
 
 ## Before
-```typescript
+```{language}
 {before_code}
 ```
 
 ## After
-```typescript
+```{language}
 {after_code}
 ```
 
@@ -230,7 +400,7 @@ class PatternClassifier:
 1. Transform type: [error-handling|null-safety|type-safety|async-await|validation|other]
 2. Is this a clean, learnable example? Consider:
    - Is the transformation focused and complete?
-   - Does it follow best practices?
+   - Does it follow {language} best practices?
    - Would it teach good patterns to a model?
 3. Write an imperative instruction for this transformation (e.g., "Add try-catch error handling")
 
@@ -250,6 +420,36 @@ Respond ONLY in JSON format:
         """
         self.llm_client = llm_client
 
+    def _get_language(self, pair: CodeTransformPair) -> str:
+        """Get language from pair or detect from file path.
+
+        Args:
+            pair: Code transformation pair
+
+        Returns:
+            Language name (e.g., "python", "typescript")
+        """
+        # Try to get language from pair attribute
+        language = getattr(pair, "language", None)
+        if language:
+            return language
+
+        # Try to detect from file path
+        if pair.file_path:
+            try:
+                lang_id = detect_language(pair.file_path)
+                if lang_id:
+                    return lang_id.value
+            except Exception:
+                pass
+
+        # Default to TypeScript
+        return "typescript"
+
+    def _is_python(self, language: str) -> bool:
+        """Check if language is Python."""
+        return language.lower() == "python"
+
     def classify(
         self, pair: CodeTransformPair, use_llm: bool = False
     ) -> ClassificationResult:
@@ -262,25 +462,46 @@ Respond ONLY in JSON format:
         Returns:
             ClassificationResult with type, learnability, and instruction
         """
+        # Get language for this pair
+        language = self._get_language(pair)
+
         # Rule-based classification first
-        rule_result = self._classify_rule_based(pair)
+        rule_result = self._classify_rule_based(pair, language)
 
         # If LLM is requested and available, validate with LLM
         if use_llm and self.llm_client and rule_result.confidence < 0.9:
-            llm_result = self._classify_with_llm(pair)
+            llm_result = self._classify_with_llm(pair, language)
             if llm_result:
                 return llm_result
 
         return rule_result
 
-    def _classify_rule_based(self, pair: CodeTransformPair) -> ClassificationResult:
-        """Classify using rule-based heuristics."""
+    def _classify_rule_based(
+        self, pair: CodeTransformPair, language: str = "typescript"
+    ) -> ClassificationResult:
+        """Classify using rule-based heuristics.
+
+        Args:
+            pair: Code transformation pair
+            language: Language of the code
+
+        Returns:
+            ClassificationResult
+        """
         transform_type = pair.transform_type  # Already classified by extractor
+
+        # Select quality patterns based on language
+        if self._is_python(language):
+            quality_patterns = self.PYTHON_QUALITY_PATTERNS
+            instruction_templates = self.PYTHON_INSTRUCTION_TEMPLATES
+        else:
+            quality_patterns = self.QUALITY_PATTERNS
+            instruction_templates = self.INSTRUCTION_TEMPLATES
 
         # Check quality patterns
         after_code = pair.after_code
-        good_patterns = self.QUALITY_PATTERNS.get(transform_type, {}).get("good", [])
-        bad_patterns = self.QUALITY_PATTERNS.get(transform_type, {}).get("bad", [])
+        good_patterns = quality_patterns.get(transform_type, {}).get("good", [])
+        bad_patterns = quality_patterns.get(transform_type, {}).get("bad", [])
 
         good_matches = sum(
             1 for p in good_patterns if re.search(p, after_code, re.MULTILINE)
@@ -299,12 +520,12 @@ Respond ONLY in JSON format:
         confidence = min(1.0, quality_score + (0.1 if bad_matches == 0 else -0.2))
 
         # Generate instruction
-        templates = self.INSTRUCTION_TEMPLATES.get(transform_type, ["Transform this code"])
+        templates = instruction_templates.get(transform_type, ["Transform this code"])
         import random
 
         instruction = random.choice(templates)
 
-        reason = f"Rule-based: {good_matches} good patterns, {bad_matches} bad patterns"
+        reason = f"Rule-based ({language}): {good_matches} good patterns, {bad_matches} bad patterns"
 
         return ClassificationResult(
             transform_type=transform_type,
@@ -314,12 +535,23 @@ Respond ONLY in JSON format:
             reason=reason,
         )
 
-    def _classify_with_llm(self, pair: CodeTransformPair) -> ClassificationResult | None:
-        """Classify using LLM for validation."""
+    def _classify_with_llm(
+        self, pair: CodeTransformPair, language: str = "typescript"
+    ) -> ClassificationResult | None:
+        """Classify using LLM for validation.
+
+        Args:
+            pair: Code transformation pair
+            language: Language of the code
+
+        Returns:
+            ClassificationResult if successful, None otherwise
+        """
         if not self.llm_client:
             return None
 
         prompt = self.CLASSIFICATION_PROMPT.format(
+            language=language,
             before_code=pair.before_code[:1500],  # Truncate for token limit
             after_code=pair.after_code[:1500],
         )
@@ -334,7 +566,7 @@ Respond ONLY in JSON format:
                     is_learnable=result.get("is_learnable", False),
                     instruction=result.get("instruction", "Transform this code"),
                     confidence=0.9 if result.get("is_learnable") else 0.5,
-                    reason=f"LLM: {result.get('reason', 'No reason provided')}",
+                    reason=f"LLM ({language}): {result.get('reason', 'No reason provided')}",
                 )
         except Exception as e:
             logger.warning(f"LLM classification failed: {e}")
