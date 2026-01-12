@@ -73,11 +73,11 @@ mochi init --project /path/to/your-project
 # Prepare training data
 mochi prepare --repo /path/to/your-project --output ./data/my-project
 
-# Train Project Adapter
+# Train Project Adapter (Qwen3-Coder recommended for quality)
 mochi train project \
   --data ./data/my-project \
   --output ./adapter \
-  --model mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit
+  --model mlx-community/Qwen3-Coder-0.6B-A0.3B-Instruct-4bit
 ```
 
 **Distribute adapter to team:**
@@ -219,7 +219,7 @@ adapter/
 ## Tech Stack
 
 - **Inference**: MLX (Apple Silicon) / PyTorch (CUDA)
-- **Base Model**: Qwen2.5-Coder-0.5B/1.5B/3B
+- **Base Model**: Qwen3-Coder (30B MoE), Qwen2.5-Coder (0.5B-3B)
 - **Training**: LoRA/QLoRA
 - **Integration**: MCP (Model Context Protocol)
 
