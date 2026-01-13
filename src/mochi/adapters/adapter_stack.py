@@ -118,6 +118,7 @@ class AdapterStack:
         self,
         prompt: str,
         max_tokens: int = 256,
+        min_tokens: int = 0,
         temperature: float = 0.1,
         top_p: float = 0.95,
         repetition_penalty: float = 1.1,
@@ -130,6 +131,7 @@ class AdapterStack:
         Args:
             prompt: Input prompt
             max_tokens: Maximum tokens to generate
+            min_tokens: Minimum tokens before allowing EOS (prevents short outputs)
             temperature: Sampling temperature
             top_p: Top-p sampling
             repetition_penalty: Repetition penalty
@@ -147,6 +149,7 @@ class AdapterStack:
         return self._primary_adapter.adapter.generate(
             prompt=prompt,
             max_tokens=max_tokens,
+            min_tokens=min_tokens,
             temperature=temperature,
             top_p=top_p,
             repetition_penalty=repetition_penalty,

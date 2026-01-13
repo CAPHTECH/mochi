@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..core.exceptions import AdapterError, AdapterNotFoundError, TrainingError
 from ..core.types import ProjectAdapterConfig, TrainingConfig
+from .generation_mixin import GenerationMixin
 
 if TYPE_CHECKING:
     from .base_adapter import BaseAdapter
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ProjectAdapter:
+class ProjectAdapter(GenerationMixin):
     """Project-specific adapter.
 
     ProjectAdapter wraps a LoRA adapter trained on project-specific patterns.
@@ -134,47 +135,7 @@ class ProjectAdapter:
                 {"error": str(e)},
             ) from e
 
-    def generate(
-        self,
-        prompt: str,
-        max_tokens: int = 256,
-        temperature: float = 0.1,
-        top_p: float = 0.95,
-        repetition_penalty: float = 1.1,
-    ) -> str:
-        """Generate text using the adapter.
-
-        Args:
-            prompt: Input prompt
-            max_tokens: Maximum tokens to generate
-            temperature: Sampling temperature
-            top_p: Top-p sampling
-            repetition_penalty: Repetition penalty
-
-        Returns:
-            Generated text
-        """
-        self._ensure_loaded()
-
-        try:
-            from mlx_lm import generate
-            from mlx_lm.sample_utils import make_sampler
-
-            sampler = make_sampler(temp=temperature, top_p=top_p)
-            result = generate(
-                self._model,
-                self._tokenizer,
-                prompt=prompt,
-                max_tokens=max_tokens,
-                sampler=sampler,
-            )
-            return result
-
-        except Exception as e:
-            raise AdapterError(
-                "Generation failed",
-                {"error": str(e), "adapter": self.name},
-            ) from e
+    # generate() and _make_min_tokens_processor() are inherited from GenerationMixin
 
     def save(self, path: Path | str) -> None:
         """Save adapter to disk.

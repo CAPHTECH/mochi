@@ -596,15 +596,76 @@ def list_adapters(adapters_dir: Path | None) -> None:
 @main.command()
 @click.option("--repo", "-r", required=True, help="Git repository URL or local path")
 @click.option("--output", "-o", default="./data", help="Output directory for training data")
-@click.option("--extensions", "-e", multiple=True, default=[".ts", ".tsx"], help="File extensions")
+@click.option("--extensions", "-e", multiple=True, help="File extensions (overrides config)")
+@click.option("--config", "-c", type=click.Path(exists=True, path_type=Path), help="Config file path")
 @click.option("--project-name", "-n", default="project", help="Project name for context")
-def prepare(repo: str, output: str, extensions: tuple[str, ...], project_name: str) -> None:
-    """Prepare training data from a repository (legacy command)."""
-    from ..data_generation.alpaca_converter import create_training_dataset
+@click.option("--include-package-docs/--no-package-docs", default=True, help="Include package documentation")
+def prepare(
+    repo: str,
+    output: str,
+    extensions: tuple[str, ...],
+    config: Path | None,
+    project_name: str,
+    include_package_docs: bool,
+) -> None:
+    """Prepare training data from a repository.
+
+    File extensions are determined by priority:
+      1. CLI --extensions option (if specified)
+      2. Config file (searched in order):
+         - --config option
+         - <repo>/mochi.yaml (project config)
+         - ~/.mochi/config.yaml (user config)
+      3. Default: .ts, .tsx
+
+    Package documentation (README) is fetched from npm/PyPI for dependencies
+    found in package.json, pyproject.toml, etc. Disable with --no-package-docs.
+    """
+    from ..core.config import load_config
+    from ..data_generation.alpaca_converter import (
+        AlpacaConverter,
+        create_package_doc_examples,
+        create_training_dataset,
+    )
     from ..ingestion.git_connector import GitConnector
+    from ..ingestion.package_docs import extract_package_docs
     from ..preprocessing.code_chunker import ChunkStrategy, CodeChunker
 
     click.echo(f"Preparing data from: {repo}")
+
+    # Determine repo path for project-level config search
+    repo_path = None
+    if not repo.startswith(("http://", "https://", "git@")):
+        repo_path = Path(repo).resolve()
+
+    # Determine file extensions (priority: CLI > config > default)
+    if extensions:
+        file_extensions = list(extensions)
+        click.echo(f"Using CLI extensions: {file_extensions}")
+    else:
+        # Search for config: explicit > project > user
+        search_paths = []
+        if repo_path:
+            search_paths.extend([
+                repo_path / "mochi.yaml",
+                repo_path / "mochi.yml",
+                repo_path / ".mochi" / "config.yaml",
+            ])
+        cfg = load_config(config, search_paths=search_paths)
+        file_extensions = cfg.training.file_extensions
+
+        # Determine which config was used for logging
+        if config:
+            click.echo(f"Using config from {config}: {file_extensions}")
+        elif repo_path:
+            for p in search_paths:
+                if p.exists():
+                    click.echo(f"Using project config from {p}: {file_extensions}")
+                    break
+            else:
+                click.echo(f"Using extensions: {file_extensions}")
+        else:
+            click.echo(f"Using extensions: {file_extensions}")
 
     # Clone or connect to repo
     if repo.startswith(("http://", "https://", "git@")):
@@ -615,7 +676,7 @@ def prepare(repo: str, output: str, extensions: tuple[str, ...], project_name: s
         connector = GitConnector(repo)
 
     # Get source files
-    files = connector.get_source_files(list(extensions))
+    files = connector.get_source_files(file_extensions)
     click.echo(f"Found {len(files)} source files")
 
     # Chunk code
@@ -634,12 +695,32 @@ def prepare(repo: str, output: str, extensions: tuple[str, ...], project_name: s
 
     click.echo(f"Created {len(all_chunks)} chunks")
 
+    # Fetch package documentation if enabled
+    package_doc_examples = []
+    if include_package_docs:
+        source_path = repo_path or connector.repo_path
+        click.echo(f"Fetching package documentation from: {source_path}")
+
+        try:
+            package_docs = extract_package_docs(source_path, cfg.package_docs)
+            click.echo(f"Found {len(package_docs)} packages with documentation")
+
+            if package_docs:
+                package_doc_examples = create_package_doc_examples(
+                    package_docs,
+                    project_name=project_name,
+                )
+                click.echo(f"Created {len(package_doc_examples)} package doc examples")
+        except Exception as e:
+            click.echo(f"Warning: Failed to fetch package docs: {e}", err=True)
+
     # Convert to training format
     output_dir = Path(output)
     train_path, eval_path = create_training_dataset(
         all_chunks,
         output_dir,
         project_name=project_name,
+        extra_examples=package_doc_examples,
     )
 
     click.echo(f"Training data saved to: {train_path}")

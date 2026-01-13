@@ -21,6 +21,7 @@ class GitConnector:
     """Connects to Git repositories and extracts source files."""
 
     LANGUAGE_EXTENSIONS: dict[str, str] = {
+        # Programming languages
         ".ts": "typescript",
         ".tsx": "typescript",
         ".js": "javascript",
@@ -33,6 +34,47 @@ class GitConnector:
         ".kt": "kotlin",
         ".rb": "ruby",
         ".php": "php",
+        ".cs": "csharp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".h": "c",
+        ".hpp": "cpp",
+        # Data/Config formats
+        ".json": "json",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".toml": "toml",
+        ".xml": "xml",
+        ".sql": "sql",
+        ".graphql": "graphql",
+        ".gql": "graphql",
+        # Documentation/Text
+        ".md": "markdown",
+        ".mdx": "markdown",
+        ".txt": "text",
+        ".rst": "restructuredtext",
+        # Shell/Scripts
+        ".sh": "shell",
+        ".bash": "shell",
+        ".zsh": "shell",
+        ".fish": "shell",
+        ".ps1": "powershell",
+        # Web
+        ".html": "html",
+        ".htm": "html",
+        ".css": "css",
+        ".scss": "scss",
+        ".sass": "sass",
+        ".less": "less",
+        ".vue": "vue",
+        ".svelte": "svelte",
+        # Test/Spec
+        ".feature": "gherkin",
+        ".spec": "text",
+        # Other
+        ".dockerfile": "dockerfile",
+        ".env": "dotenv",
+        ".gitignore": "gitignore",
     }
 
     def __init__(self, repo_path: str | Path) -> None:

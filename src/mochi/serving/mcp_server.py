@@ -13,11 +13,14 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..core.async_utils import run_sync
 from ..core.exceptions import AdapterError, InferenceError
+from .config import MCPServerConfig, ToolDefinition
+from .handlers import ToolHandlers
+from .tool_definitions import TOOLS
 
 if TYPE_CHECKING:
     from ..adapters.adapter_stack import AdapterStack
@@ -28,58 +31,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ToolDefinition:
-    """MCP Tool definition."""
-
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-
-
-@dataclass
-class MCPServerConfig:
-    """MCP Server configuration."""
-
-    # Backend selection: "mlx" (recommended for Apple Silicon) or "pytorch"
-    backend: str = "mlx"
-
-    # Model settings
-    base_model: str = "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"
-
-    # Adapter paths
-    base_adapter_path: Path | None = None
-    project_adapter_path: Path | None = None
-
-    # Adapter weights for stack
-    base_weight: float = 0.3
-    project_weight: float = 0.7
-
-    # Runtime settings
-    timeout_seconds: float = 30.0
-    max_tokens: int = 2048
-    temperature: float = 0.1
-    top_p: float = 0.9
-
-    # Resource directories
-    patterns_dir: Path | None = None
-    conventions_dir: Path | None = None
-
-    # LSP settings
-    use_lsp_context: bool = True
-    lsp_context_lines: int = 50
-
-    # Project root for LSP context extraction
-    # If None, LSP context will not be available
-    project_root: Path | None = None
-    lsp_language: str = "typescript"
-    schema_path: Path | None = None
-
-
-class MCPServer:
+class MCPServer(ToolHandlers):
     """MCP Server for mochi inference.
 
     Implements JSON-RPC 2.0 over stdio for Claude Code integration.
+    Inherits tool handlers from ToolHandlers mixin.
 
     Usage:
         # With adapter stack
@@ -97,131 +53,7 @@ class MCPServer:
         server.run_stdio()
     """
 
-    # Tool definitions
-    TOOLS: list[ToolDefinition] = [
-        ToolDefinition(
-            name="domain_query",
-            description=(
-                "Query the domain-specific model for code completion. "
-                "Use code-completion style instructions like 'Fill in the code', "
-                "'Implement the following', 'Write the implementation'. "
-                "Provide code context in the 'input' field. "
-                "Model learns PATTERNS and STYLE - verify exact APIs against source."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "instruction": {
-                        "type": "string",
-                        "description": (
-                            "Code completion instruction. Use: 'Fill in the code', "
-                            "'Implement the following based on the context'"
-                        ),
-                    },
-                    "input": {
-                        "type": "string",
-                        "description": (
-                            "Code context with file path comment. "
-                            "Format: '// File: path/to/file.ts\\n<code before completion point>'"
-                        ),
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": "File path for LSP context extraction",
-                    },
-                    "max_tokens": {
-                        "type": "number",
-                        "description": "Maximum tokens to generate (default: 2048)",
-                    },
-                    "temperature": {
-                        "type": "number",
-                        "description": "Sampling temperature 0.0-1.0 (default: 0.1)",
-                    },
-                    "use_lsp": {
-                        "type": "boolean",
-                        "description": "Use LSP context if available (default: true)",
-                    },
-                },
-                "required": ["instruction"],
-            },
-        ),
-        ToolDefinition(
-            name="complete_code",
-            description=(
-                "Complete code using trained adapter patterns. "
-                "Provide code prefix (and optional suffix for fill-in-the-middle). "
-                "Model generates continuation matching learned patterns."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "prefix": {
-                        "type": "string",
-                        "description": "Code before cursor position",
-                    },
-                    "suffix": {
-                        "type": "string",
-                        "description": "Code after cursor position (for fill-in-the-middle)",
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": "File path for context",
-                    },
-                    "max_tokens": {
-                        "type": "number",
-                        "description": "Maximum tokens to generate (default: 256)",
-                    },
-                },
-                "required": ["prefix"],
-            },
-        ),
-        ToolDefinition(
-            name="suggest_pattern",
-            description=(
-                "Generate code pattern suggestions based on goal description. "
-                "Returns pattern examples based on learned conventions."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "context": {
-                        "type": "string",
-                        "description": "Current code context (imports, surrounding code)",
-                    },
-                    "goal": {
-                        "type": "string",
-                        "description": "What you want to implement",
-                    },
-                },
-                "required": ["goal"],
-            },
-        ),
-        ToolDefinition(
-            name="generate_diff",
-            description=(
-                "Generate a unified diff for a code change. "
-                "Outputs only the changed parts in unified diff format."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "original_code": {
-                        "type": "string",
-                        "description": "The original code to modify",
-                    },
-                    "change_description": {
-                        "type": "string",
-                        "description": "Description of the desired change",
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": "Programming language (default: typescript)",
-                    },
-                },
-                "required": ["original_code", "change_description"],
-            },
-        ),
-    ]
+    # Tool definitions imported from tool_definitions.py
 
     def __init__(
         self,
@@ -270,8 +102,6 @@ class MCPServer:
 
     def _create_inference_engine(self) -> None:
         """Create inference engine from config."""
-        import asyncio
-
         from ..adapters.adapter_stack import AdapterStack
         from ..adapters.base_adapter import BaseAdapter
         from ..adapters.project_adapter import ProjectAdapter
@@ -349,8 +179,6 @@ class MCPServer:
         Returns:
             ContextExtractor instance or None if creation fails
         """
-        import asyncio
-
         from ..lsp.client import LSPClient
         from ..lsp.context_extractor import ContextExtractor
 
@@ -362,11 +190,7 @@ class MCPServer:
             )
 
             # Start LSP client (async)
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(lsp_client.start())
-            finally:
-                loop.close()
+            run_sync(lsp_client.start())
 
             # Create extractor
             return ContextExtractor(
@@ -382,6 +206,52 @@ class MCPServer:
         """Ensure server is initialized (lazy initialization)."""
         if not self._initialized:
             self.initialize()
+
+    def _require_engine(self) -> "InferenceEngine":
+        """Ensure engine is initialized and return it.
+
+        Returns:
+            InferenceEngine instance
+
+        Raises:
+            RuntimeError: If initialization fails or engine is not available
+        """
+        self._ensure_initialized()
+        if not self._engine:
+            raise RuntimeError("Inference engine not initialized.")
+        return self._engine
+
+    def _make_error_response(self, message: str) -> dict[str, Any]:
+        """Create a standard error response.
+
+        Args:
+            message: Error message
+
+        Returns:
+            MCP error response dict
+        """
+        return {
+            "content": [{"type": "text", "text": message}],
+            "isError": True,
+        }
+
+    def _make_success_response(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Create a standard success response.
+
+        Args:
+            data: Response data to serialize
+
+        Returns:
+            MCP success response dict
+        """
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(data, indent=2, ensure_ascii=False),
+                }
+            ]
+        }
 
     def _load_patterns(self, patterns_dir: Path) -> None:
         """Load patterns from directory."""
@@ -426,7 +296,7 @@ class MCPServer:
                     "description": tool.description,
                     "inputSchema": tool.input_schema,
                 }
-                for tool in self.TOOLS
+                for tool in TOOLS
             ]
         }
 
@@ -435,13 +305,8 @@ class MCPServer:
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
-        handlers = {
-            "domain_query": self._handle_domain_query,
-            "complete_code": self._handle_complete_code,
-            "suggest_pattern": self._handle_suggest_pattern,
-            "generate_diff": self._handle_generate_diff,
-        }
-
+        # Get handlers from mixin (see handlers/tool_handlers.py)
+        handlers = self.get_tool_handlers()
         handler = handlers.get(tool_name)
         if handler:
             return handler(arguments)
@@ -456,256 +321,8 @@ class MCPServer:
                 "isError": True,
             }
 
-    def _handle_domain_query(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle domain_query tool call."""
-        try:
-            self._ensure_initialized()
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Initialization error: {e}"}],
-                "isError": True,
-            }
-
-        if not self._engine:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Inference engine not initialized.",
-                    }
-                ],
-                "isError": True,
-            }
-
-        instruction = args.get("instruction", "")
-        input_code = args.get("input", "")
-        file_path = args.get("file_path")
-        max_tokens = args.get("max_tokens")
-        temperature = args.get("temperature")
-        use_lsp = args.get("use_lsp")
-
-        try:
-            response = self._engine.complete(
-                instruction=instruction,
-                input_code=input_code,
-                file_path=file_path,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                use_lsp=use_lsp,
-            )
-
-            response_data = {
-                "response": response,
-                "adapter": str(self._engine.active_adapter),
-            }
-
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(response_data, indent=2, ensure_ascii=False),
-                    }
-                ]
-            }
-
-        except InferenceError as e:
-            return {
-                "content": [{"type": "text", "text": f"Inference error: {e}"}],
-                "isError": True,
-            }
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Error: {e}"}],
-                "isError": True,
-            }
-
-    def _handle_complete_code(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle complete_code tool call."""
-        try:
-            self._ensure_initialized()
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Initialization error: {e}"}],
-                "isError": True,
-            }
-
-        if not self._engine:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Inference engine not initialized.",
-                    }
-                ],
-                "isError": True,
-            }
-
-        prefix = args.get("prefix", "")
-        suffix = args.get("suffix", "")
-        file_path = args.get("file_path")
-        max_tokens = args.get("max_tokens", 256)
-
-        try:
-            # Build fill-in-the-middle style prompt
-            if suffix:
-                input_code = f"{prefix}<FILL>{suffix}"
-                instruction = "Fill in the code at <FILL> marker"
-            else:
-                input_code = prefix
-                instruction = "Continue the code"
-
-            response = self._engine.complete(
-                instruction=instruction,
-                input_code=input_code,
-                file_path=file_path,
-                max_tokens=max_tokens,
-            )
-
-            response_data = {
-                "completion": response,
-            }
-
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(response_data, indent=2, ensure_ascii=False),
-                    }
-                ]
-            }
-
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Error: {e}"}],
-                "isError": True,
-            }
-
-    def _handle_suggest_pattern(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle suggest_pattern tool call."""
-        try:
-            self._ensure_initialized()
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Initialization error: {e}"}],
-                "isError": True,
-            }
-
-        if not self._engine:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Inference engine not initialized.",
-                    }
-                ],
-                "isError": True,
-            }
-
-        context = args.get("context", "")
-        goal = args.get("goal", "")
-
-        try:
-            instruction = f"Suggest code patterns for: {goal}"
-            input_code = f"// Context:\n{context}\n\n// Goal: {goal}\n// Pattern:"
-
-            response = self._engine.complete(
-                instruction=instruction,
-                input_code=input_code,
-                max_tokens=1024,
-            )
-
-            response_data = {
-                "patterns": [
-                    {
-                        "name": "Generated Pattern",
-                        "description": goal,
-                        "example": response,
-                    }
-                ],
-            }
-
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(response_data, indent=2, ensure_ascii=False),
-                    }
-                ]
-            }
-
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Error: {e}"}],
-                "isError": True,
-            }
-
-    def _handle_generate_diff(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle generate_diff tool call."""
-        try:
-            self._ensure_initialized()
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Initialization error: {e}"}],
-                "isError": True,
-            }
-
-        if not self._engine:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Inference engine not initialized.",
-                    }
-                ],
-                "isError": True,
-            }
-
-        original_code = args.get("original_code", "")
-        change_description = args.get("change_description", "")
-        language = args.get("language", "typescript")
-
-        if not original_code or not change_description:
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "Both 'original_code' and 'change_description' are required.",
-                    }
-                ],
-                "isError": True,
-            }
-
-        try:
-            instruction = (
-                f"Generate a unified diff for the following {language} code change. "
-                f"Change: {change_description}"
-            )
-            input_code = f"```{language}\n{original_code}\n```\n\nGenerate unified diff:"
-
-            response = self._engine.complete(
-                instruction=instruction,
-                input_code=input_code,
-                max_tokens=1024,
-            )
-
-            response_data = {
-                "diff": response,
-            }
-
-            return {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": json.dumps(response_data, indent=2, ensure_ascii=False),
-                    }
-                ]
-            }
-
-        except Exception as e:
-            return {
-                "content": [{"type": "text", "text": f"Error: {e}"}],
-                "isError": True,
-            }
+    # Tool handlers are inherited from ToolHandlers mixin
+    # See: handlers/tool_handlers.py
 
     def handle_resources_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Handle resources/list request."""
@@ -903,18 +520,12 @@ class MCPServer:
 
     def shutdown(self) -> None:
         """Shutdown server and cleanup resources."""
-        import asyncio
-
         # Cleanup LSP client if present
         if self._context_extractor:
             try:
                 lsp_client = self._context_extractor.lsp
                 if lsp_client:
-                    loop = asyncio.new_event_loop()
-                    try:
-                        loop.run_until_complete(lsp_client.stop())
-                    finally:
-                        loop.close()
+                    run_sync(lsp_client.stop())
             except Exception as e:
                 logger.debug(f"LSP client cleanup error: {e}")
 

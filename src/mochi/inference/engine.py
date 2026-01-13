@@ -5,12 +5,12 @@ Provides a high-level API for running inference with mochi adapters.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..core.async_utils import run_sync
 from ..core.exceptions import AdapterError, InferenceError
 from ..core.types import InferenceConfig
 from .prompt_builder import CompletionContext, PromptBuilder
@@ -98,7 +98,9 @@ class InferenceEngine:
         input_code: str,
         file_path: str | None = None,
         max_tokens: int | None = None,
+        min_tokens: int | None = None,
         temperature: float | None = None,
+        repetition_penalty: float | None = None,
         use_lsp: bool | None = None,
     ) -> str:
         """Complete code based on instruction and input.
@@ -108,7 +110,9 @@ class InferenceEngine:
             input_code: Code to complete
             file_path: Optional file path for context
             max_tokens: Max tokens to generate (overrides config)
+            min_tokens: Min tokens before allowing EOS (prevents short outputs)
             temperature: Sampling temperature (overrides config)
+            repetition_penalty: Repetition penalty (overrides config)
             use_lsp: Whether to use LSP context (overrides config)
 
         Returns:
@@ -142,17 +146,19 @@ class InferenceEngine:
                 response = self._adapter_stack.generate(
                     prompt=prompt,
                     max_tokens=max_tokens or self.config.max_tokens,
+                    min_tokens=min_tokens or 0,
                     temperature=temperature or self.config.temperature,
                     top_p=self.config.top_p,
-                    repetition_penalty=self.config.repetition_penalty,
+                    repetition_penalty=repetition_penalty or self.config.repetition_penalty,
                 )
             else:
                 response = self._adapter.generate(
                     prompt=prompt,
                     max_tokens=max_tokens or self.config.max_tokens,
+                    min_tokens=min_tokens or 0,
                     temperature=temperature or self.config.temperature,
                     top_p=self.config.top_p,
-                    repetition_penalty=self.config.repetition_penalty,
+                    repetition_penalty=repetition_penalty or self.config.repetition_penalty,
                 )
 
             # Parse response
@@ -207,18 +213,14 @@ class InferenceEngine:
             line, character = self._detect_cursor_position(input_code)
 
             # Run async extraction in sync context
-            loop = asyncio.new_event_loop()
-            try:
-                context_block = loop.run_until_complete(
-                    self._context_extractor.extract_at_position(
-                        Path(file_path),
-                        line,
-                        character,
-                        include_schema=True,
-                    )
+            context_block = run_sync(
+                self._context_extractor.extract_at_position(
+                    Path(file_path),
+                    line,
+                    character,
+                    include_schema=True,
                 )
-            finally:
-                loop.close()
+            )
 
             # Return formatted context if not empty
             if context_block and not context_block.is_empty():

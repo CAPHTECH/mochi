@@ -698,15 +698,27 @@ def create_training_dataset(
     output_dir: str | Path,
     project_name: str = "project",
     train_ratio: float = 0.9,
+    extra_examples: list[AlpacaExample] | None = None,
 ) -> tuple[Path, Path]:
     """
     Create train/valid split and save to files.
+
+    Args:
+        chunks: List of code chunks
+        output_dir: Output directory for train/valid files
+        project_name: Project name for context
+        train_ratio: Train/valid split ratio
+        extra_examples: Additional examples to include (e.g., package docs)
 
     Returns:
         Tuple of (train_path, valid_path)
     """
     converter = AlpacaConverter(project_name)
     examples = converter.convert_chunks(chunks)
+
+    # Add extra examples (e.g., package documentation)
+    if extra_examples:
+        examples.extend(extra_examples)
 
     # Shuffle and split
     random.shuffle(examples)
@@ -723,6 +735,61 @@ def create_training_dataset(
     converter.to_jsonl(valid_examples, valid_path)
 
     return train_path, valid_path
+
+
+def create_package_doc_examples(
+    package_docs: list,  # list[PackageDoc]
+    project_name: str = "project",
+) -> list[AlpacaExample]:
+    """Create training examples from package documentation.
+
+    Converts package READMEs into training examples that help the model
+    understand library APIs and usage patterns.
+
+    Args:
+        package_docs: List of PackageDoc from package_docs extractor
+        project_name: Project name for context
+
+    Returns:
+        List of AlpacaExample for training
+    """
+    examples: list[AlpacaExample] = []
+
+    # Templates for package documentation learning
+    PACKAGE_TEMPLATES = [
+        "How do I use {package_name} in {project_name}?",
+        "What are the main features of {package_name}?",
+        "Show me how to use {package_name}:",
+        "Explain the {package_name} API:",
+        "What patterns does {package_name} provide?",
+    ]
+
+    for doc in package_docs:
+        if not doc.readme or len(doc.readme) < 100:
+            continue
+
+        # Create multiple examples per package
+        for template in PACKAGE_TEMPLATES[:3]:  # Limit to 3 per package
+            instruction = template.format(
+                package_name=doc.name,
+                project_name=project_name,
+            )
+
+            # Use the README as the output (what the model should learn)
+            # Truncate if too long
+            readme_content = doc.readme
+            if len(readme_content) > 4000:
+                readme_content = readme_content[:4000] + "\n\n[...]"
+
+            examples.append(
+                AlpacaExample(
+                    instruction=instruction,
+                    input=f"Package: {doc.name}\nVersion: {doc.version or 'latest'}",
+                    output=readme_content,
+                )
+            )
+
+    return examples
 
 
 async def create_training_dataset_with_context(

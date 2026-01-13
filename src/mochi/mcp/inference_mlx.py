@@ -7,6 +7,11 @@ Law compliance:
 - L-adapter-required: Adapter must be loaded before inference
 - L-response-time: Inference < 5 seconds (MLX is much faster)
 - L-memory-bound: Memory usage monitoring
+
+Priority Labels (used in comments):
+- P0: Critical - 出力品質に直接影響する改善（EOS抑制、アーティファクト除去、confidence計算）
+- P1: Important - 重要な機能追加（差分生成モード）
+- P2: Enhancement - 使用体験向上（生成モード切替、自動リトライ）
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ def make_min_tokens_processor(
 ) -> callable:
     """Create a logits processor that suppresses EOS until min_tokens.
 
-    P0: 出力長改善 - EOS早期発生を抑制
+    P0: 出力長改善 - LLMが短すぎる出力で終了する問題を解決。
+    EOSトークンのlogitを大きな負値にすることで、min_tokens到達まで終了を抑制。
 
     Args:
         tokenizer: The tokenizer to get EOS token ID
@@ -60,11 +66,15 @@ class TaskType(Enum):
     DOCUMENTATION = "documentation"
     IMPORT = "import"
     GENERAL = "general"
-    DIFF = "diff"  # P1: 差分生成モード
+    DIFF = "diff"  # P1: 差分生成モード - 全コード再生成ではなくunified diff形式で変更のみを出力
+    ANALYSIS = "analysis"  # コード分析（自然言語での詳細説明）
 
 
 class GenerationMode(Enum):
-    """P2: Generation modes for confidence-based switching.
+    """Generation modes for confidence-based switching.
+
+    P2: 使用体験向上 - 生成品質が低い場合に自動でパラメータを調整する機能。
+    低confidence時にCONSERVATIVEモードで再試行し、より安定した出力を得る。
 
     - AUTO: Automatically select mode based on context and results
     - CONSERVATIVE: Lower temperature, stricter context adherence
@@ -117,20 +127,21 @@ Use ONLY the methods listed in Context above.
     CODE_COMPLETION = """{context}
 {code}"""
 
-    # P1: Diff generation template
-    DIFF_TEMPLATE = """### Instruction:
-Generate a COMPLETE unified diff for the following change.
-Include ALL additions and modifications. Do not stop early.
-Output format: unified diff starting with --- and +++.
+    # Analysis template - designed for detailed natural language output
+    ANALYSIS_TEMPLATE = """### Instruction:
+{instruction}
 
-### Change Request:
-{change_description}
+Provide a detailed analysis in natural language. Be thorough and specific.
+Include:
+- Key patterns and design decisions
+- How components interact
+- Notable implementation details
 
-### Original Code ({language}):
-{original_code}
+### Code to Analyze:
+{input}
 
-### Response (complete unified diff with all changes):
----"""
+### Detailed Analysis:
+"""
 
     @classmethod
     def format(
@@ -166,6 +177,13 @@ Output format: unified diff starting with --- and +++.
         if not instruction:
             instruction = cls._default_instruction(task_type)
 
+        # Use analysis template for ANALYSIS task type
+        if task_type == TaskType.ANALYSIS:
+            return cls.ANALYSIS_TEMPLATE.format(
+                instruction=instruction,
+                input=input_text,
+            )
+
         # Use context-aware template if context provided
         if context:
             return cls.CONTEXT_AWARE.format(
@@ -194,6 +212,7 @@ Output format: unified diff starting with --- and +++.
             TaskType.IMPORT: "Add the necessary imports:",
             TaskType.GENERAL: "Complete the following:",
             TaskType.DIFF: "Generate a unified diff:",
+            TaskType.ANALYSIS: "Analyze this code and explain the patterns, design decisions, and implementation details:",
         }
         return instructions.get(task_type, instructions[TaskType.GENERAL])
 
@@ -273,6 +292,14 @@ class InferenceConfig:
                     "temperature": 0.05,  # Very low for precise diffs
                     "top_p": 0.3,
                     "repetition_penalty": 1.1,
+                },
+                # Analysis - longer output, natural language
+                TaskType.ANALYSIS: {
+                    "max_tokens": 1024,
+                    "min_tokens": 100,  # Ensure detailed analysis
+                    "temperature": 0.4,  # Higher for natural language
+                    "top_p": 0.8,
+                    "repetition_penalty": 1.05,  # Low to allow elaboration
                 },
             }
 
@@ -463,10 +490,78 @@ class MLXInferenceEngine:
         "<|im_start|>",
     ]
 
+    def _remove_training_artifacts(self, response: str) -> str:
+        """Remove training prompt artifacts from response.
+
+        Handles cases where model outputs parts of the training prompt template.
+        """
+        for artifact in self.TRAINING_ARTIFACTS:
+            if artifact in response:
+                parts = response.split(artifact)
+                response = parts[0].strip()
+                # Check if content after artifact is meaningful
+                if len(parts) > 1 and parts[1].strip():
+                    after = parts[1].strip()
+                    if not any(a in after for a in self.TRAINING_ARTIFACTS[:5]):
+                        if len(after) > len(response) and not response:
+                            response = after
+        return response
+
+    def _remove_code_fences(self, response: str) -> str:
+        """Remove markdown code fences wrapping the response."""
+        lines = response.strip().split("\n")
+        if not lines:
+            return response
+
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        return "\n".join(lines)
+
+    def _remove_duplicate_diff_blocks(self, response: str) -> str:
+        """Remove duplicate diff blocks (LLM sometimes repeats same diff)."""
+        if not response.startswith("---"):
+            return response
+
+        blocks = re.split(r"(?=^--- )", response, flags=re.MULTILINE)
+        if len(blocks) <= 1:
+            return response
+
+        seen: set[str] = set()
+        unique_blocks: list[str] = []
+        for block in blocks:
+            block_stripped = block.strip()
+            if block_stripped and block_stripped not in seen:
+                seen.add(block_stripped)
+                unique_blocks.append(block)
+        return "".join(unique_blocks)
+
+    def _remove_incomplete_lines(self, response: str) -> str:
+        """Remove trailing incomplete lines caused by max_tokens cutoff."""
+        if not response:
+            return response
+
+        complete_endings = ";})]\n\"'`"
+        if response[-1] in complete_endings:
+            return response
+
+        lines = response.split("\n")
+        if len(lines) <= 1:
+            return response
+
+        last_line = lines[-1].strip()
+        valid_line_endings = (",", ".", ":", "{")
+        if len(last_line) < 10 and not last_line.endswith(valid_line_endings):
+            return "\n".join(lines[:-1])
+        return response
+
     def _clean_response(self, response: str) -> str:
         """Remove training artifacts from generated response.
 
-        P0: アーティファクト除去
+        P0: アーティファクト除去 - モデルがプロンプトテンプレートを出力に含める問題を解決。
+        "### Response:", "<|endoftext|>" などの訓練時アーティファクトを除去し、
+        クリーンなコードのみを返す。重複diffブロックの除去も行う。
 
         Args:
             response: Raw generated text
@@ -477,60 +572,11 @@ class MLXInferenceEngine:
         if not response:
             return response
 
-        # Remove known training artifacts
-        for artifact in self.TRAINING_ARTIFACTS:
-            if artifact in response:
-                # Take content before the artifact (model started repeating prompt)
-                parts = response.split(artifact)
-                response = parts[0].strip()
-                # If there's content after, it might be a continuation
-                if len(parts) > 1 and parts[1].strip():
-                    # Check if it's not another artifact/repetition
-                    after = parts[1].strip()
-                    if not any(a in after for a in self.TRAINING_ARTIFACTS[:5]):
-                        # Might be valid content that was split
-                        # Take the longer meaningful part
-                        if len(after) > len(response) and not response:
-                            response = after
-
-        # Remove markdown code fences if they wrap the entire response
-        lines = response.strip().split("\n")
-        if lines:
-            # Check if starts with code fence
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            # Check if ends with code fence
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            response = "\n".join(lines)
-
-        # P0: Remove duplicate diff blocks (LLM sometimes repeats same diff)
-        if response.startswith("---"):
-            # Split by diff headers, keeping the delimiter
-            blocks = re.split(r"(?=^--- )", response, flags=re.MULTILINE)
-            if len(blocks) > 1:
-                # Keep only unique blocks (preserving order)
-                seen = set()
-                unique_blocks = []
-                for block in blocks:
-                    block_stripped = block.strip()
-                    if block_stripped and block_stripped not in seen:
-                        seen.add(block_stripped)
-                        unique_blocks.append(block)
-                response = "".join(unique_blocks)
-
-        # Remove leading/trailing whitespace
+        response = self._remove_training_artifacts(response)
+        response = self._remove_code_fences(response)
+        response = self._remove_duplicate_diff_blocks(response)
         response = response.strip()
-
-        # Remove trailing incomplete lines (often caused by max_tokens cutoff)
-        # but only if they look incomplete (no semicolon, brace, etc.)
-        if response and not response[-1] in ";})]\n\"'`":
-            lines = response.split("\n")
-            if len(lines) > 1:
-                last_line = lines[-1].strip()
-                # If last line looks incomplete and short, remove it
-                if len(last_line) < 10 and not last_line.endswith((",", ".", ":", "{")):
-                    response = "\n".join(lines[:-1])
+        response = self._remove_incomplete_lines(response)
 
         return response.strip()
 
@@ -843,158 +889,6 @@ class MLXInferenceEngine:
             max_new_tokens=max_new_tokens,
             temperature=temperature,
         )
-
-    def generate_diff(
-        self,
-        original_code: str,
-        change_description: str,
-        language: str = "typescript",
-        context: str = "",
-        max_new_tokens: int = 512,
-        temperature: float = 0.05,
-    ) -> InferenceResult:
-        """Generate unified diff for a code change.
-
-        P1: 差分生成モード - 全コード生成ではなく変更部分のみを提案
-
-        Args:
-            original_code: The original code to modify
-            change_description: Description of the desired change
-            language: Programming language (for syntax highlighting in prompt)
-            context: LSP context (available methods, types)
-            max_new_tokens: Maximum tokens to generate
-            temperature: Lower for more deterministic diffs
-
-        Returns:
-            InferenceResult with unified diff
-        """
-        if not self.is_loaded:
-            raise RuntimeError("Model not loaded. Call load() first.")
-
-        start_time = time.time()
-
-        # Use the DIFF_TEMPLATE directly
-        prompt = PromptTemplate.DIFF_TEMPLATE.format(
-            change_description=change_description,
-            original_code=original_code,
-            language=language,
-        )
-
-        # If context provided, prepend it
-        if context:
-            prompt = f"### Context (MUST USE):\n{context}\n\n{prompt}"
-
-        # Create sampler - slightly higher temp for complete output
-        # (too low causes early EOS on TypeScript)
-        effective_temp = max(temperature, 0.2)
-        sampler = make_sampler(temp=effective_temp, top_p=0.6)
-        # P0: Moderate penalty to prevent duplicates without truncating output
-        repetition_penalty = make_repetition_penalty(penalty=1.15, context_size=100)
-        # P0: Prevent early EOS - ensure minimum output length
-        min_tokens_processor = make_min_tokens_processor(self.tokenizer, min_tokens=30)
-
-        # Generate
-        response = generate(
-            self.model,
-            self.tokenizer,
-            prompt=prompt,
-            max_tokens=max_new_tokens,
-            sampler=sampler,
-            logits_processors=[repetition_penalty, min_tokens_processor],
-        )
-
-        elapsed = time.time() - start_time
-
-        # Extract just the response part
-        if response.startswith(prompt):
-            response = response[len(prompt):]
-
-        # P0: Clean up training artifacts first
-        response = self._clean_response(response)
-
-        # Clean up response - keep only diff-like content
-        response = self._extract_diff(response)
-
-        tokens_generated = len(response.split())
-        confidence = self._calculate_diff_confidence(response, original_code)
-
-        return InferenceResult(
-            response=response,
-            confidence=confidence,
-            inference_time_ms=elapsed * 1000,
-            tokens_generated=tokens_generated,
-        ).with_confidence_warning()
-
-    def _extract_diff(self, response: str) -> str:
-        """Extract unified diff from response, cleaning up non-diff content.
-
-        P0: Permissive extraction - keep all content between diff headers.
-        Only remove clear non-diff content (prose before/after diff).
-        """
-        lines = response.split("\n")
-        diff_lines = []
-        in_diff = False
-        seen_first_block = False  # Track if we've completed first diff block
-
-        for line in lines:
-            # Detect start of diff
-            if line.startswith("---"):
-                if not in_diff:
-                    in_diff = True
-                    diff_lines.append(line)
-                elif seen_first_block:
-                    # Second --- header = duplicate block, stop
-                    break
-                else:
-                    diff_lines.append(line)
-            # +++ header
-            elif line.startswith("+++"):
-                if in_diff:
-                    diff_lines.append(line)
-                    seen_first_block = True
-            elif in_diff:
-                # Code fence - stop
-                if line.startswith("```"):
-                    break
-                # Keep ALL content once we're in diff mode
-                # This includes +, -, context lines, empty lines, etc.
-                diff_lines.append(line)
-
-        # If no proper diff found, return as-is
-        if not diff_lines:
-            return response
-
-        return "\n".join(diff_lines).strip()
-
-    def _calculate_diff_confidence(self, diff: str, original: str) -> float:
-        """Calculate confidence score for generated diff."""
-        # Basic heuristics for diff quality
-        if not diff:
-            return 0.0
-
-        # Check for proper diff structure
-        has_header = "---" in diff or "+++" in diff
-        has_hunks = "@@" in diff
-        has_changes = "+" in diff or "-" in diff
-
-        # Start with base confidence
-        confidence = 0.3
-
-        if has_header:
-            confidence += 0.2
-        if has_hunks:
-            confidence += 0.2
-        if has_changes:
-            confidence += 0.2
-
-        # Penalize very short or very long diffs
-        diff_lines = len(diff.split("\n"))
-        if diff_lines < 3:
-            confidence *= 0.7
-        elif diff_lines > 50:
-            confidence *= 0.8
-
-        return min(1.0, confidence)
 
     def generate_with_config(
         self,

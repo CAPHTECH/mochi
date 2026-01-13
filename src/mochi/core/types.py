@@ -184,6 +184,9 @@ class TrainingConfig:
     train_data_path: Path | None = None
     valid_data_path: Path | None = None
     train_ratio: float = 0.9
+    file_extensions: list[str] = field(
+        default_factory=lambda: [".ts", ".tsx"]
+    )
 
     # Output settings
     output_dir: Path = field(default_factory=lambda: Path("output/adapter"))
@@ -203,6 +206,41 @@ class TrainingConfig:
 
 
 @dataclass
+class PackageDocsConfig:
+    """Configuration for including package documentation in training.
+
+    Automatically detects dependencies from package management files
+    (package.json, pyproject.toml, etc.) and includes their documentation
+    in the training data.
+    """
+
+    # Auto-detection settings
+    auto_detect: bool = True
+    include_dev: bool = False  # Include devDependencies
+
+    # Filtering
+    min_usage_count: int = 0  # Minimum usage count in code (0 = no filter)
+    exclude: list[str] = field(
+        default_factory=lambda: [
+            "typescript",
+            "@types/*",
+            "eslint",
+            "eslint-*",
+            "prettier",
+            "@eslint/*",
+        ]
+    )
+
+    # Additional packages to include (beyond auto-detect)
+    include: list[str] = field(default_factory=list)
+
+    # Documentation sources
+    fetch_readme: bool = True
+    fetch_docs: bool = False  # Fetch from docs/ directory (slower)
+    max_doc_size: int = 50000  # Max characters per package doc
+
+
+@dataclass
 class InferenceConfig:
     """Configuration for inference."""
 
@@ -210,7 +248,7 @@ class InferenceConfig:
     max_tokens: int = 256
     temperature: float = 0.1
     top_p: float = 0.95
-    repetition_penalty: float = 1.1
+    repetition_penalty: float = 1.2  # Increased from 1.1 to prevent repetition loops
 
     # Adapter stacking weights
     base_weight: float = 0.3

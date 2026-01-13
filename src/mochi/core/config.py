@@ -15,6 +15,7 @@ from .language_specs import LanguageId
 from .types import (
     BaseAdapterConfig,
     InferenceConfig,
+    PackageDocsConfig,
     ProjectAdapterConfig,
     TrainingConfig,
 )
@@ -56,6 +57,9 @@ class MochiConfig:
     # Default training config
     training: TrainingConfig = field(default_factory=TrainingConfig)
 
+    # Package documentation config
+    package_docs: PackageDocsConfig = field(default_factory=PackageDocsConfig)
+
     # Default inference config
     inference: InferenceConfig = field(default_factory=InferenceConfig)
 
@@ -86,6 +90,19 @@ class MochiConfig:
             "output_dir": str(self.output_dir),
             "data_dir": str(self.data_dir),
             "base_model": self.base_model,
+            "training": {
+                "file_extensions": self.training.file_extensions,
+            },
+            "package_docs": {
+                "auto_detect": self.package_docs.auto_detect,
+                "include_dev": self.package_docs.include_dev,
+                "min_usage_count": self.package_docs.min_usage_count,
+                "exclude": self.package_docs.exclude,
+                "include": self.package_docs.include,
+                "fetch_readme": self.package_docs.fetch_readme,
+                "fetch_docs": self.package_docs.fetch_docs,
+                "max_doc_size": self.package_docs.max_doc_size,
+            },
             "base_adapters": {
                 name: {
                     "name": cfg.name,
@@ -118,11 +135,32 @@ class MochiConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MochiConfig:
         """Create configuration from dictionary."""
+        # Load training config
+        training_data = data.get("training", {})
+        training_config = TrainingConfig(
+            file_extensions=training_data.get("file_extensions", [".ts", ".tsx"]),
+        )
+
+        # Load package_docs config
+        pkg_docs_data = data.get("package_docs", {})
+        package_docs_config = PackageDocsConfig(
+            auto_detect=pkg_docs_data.get("auto_detect", True),
+            include_dev=pkg_docs_data.get("include_dev", False),
+            min_usage_count=pkg_docs_data.get("min_usage_count", 0),
+            exclude=pkg_docs_data.get("exclude", PackageDocsConfig().exclude),
+            include=pkg_docs_data.get("include", []),
+            fetch_readme=pkg_docs_data.get("fetch_readme", True),
+            fetch_docs=pkg_docs_data.get("fetch_docs", False),
+            max_doc_size=pkg_docs_data.get("max_doc_size", 50000),
+        )
+
         config = cls(
             adapters_dir=Path(data.get("adapters_dir", "adapters")),
             output_dir=Path(data.get("output_dir", "output")),
             data_dir=Path(data.get("data_dir", "data")),
             base_model=data.get("base_model", "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit"),
+            training=training_config,
+            package_docs=package_docs_config,
         )
 
         # Load base adapters

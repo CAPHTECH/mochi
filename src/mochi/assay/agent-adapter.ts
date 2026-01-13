@@ -138,18 +138,6 @@ Example:
 mochi_domain_query(query="What methods are available on KiriMCPClient?")
 </tool_call>
 
-### mochi_suggest_pattern
-Get suggested code patterns for a specific goal.
-
-Arguments:
-- goal: string - What you're trying to achieve
-- context: string (optional) - Current code context
-
-Example:
-<tool_call>
-mochi_suggest_pattern(goal="error handling for MCP tool calls")
-</tool_call>
-
 ## Instructions
 - If you're unsure about APIs or project conventions, USE THE TOOLS
 - If you know the answer confidently, you can skip tool calls
@@ -400,13 +388,6 @@ Think step by step. Do you need domain information? If yes, call a tool first.`;
       const result = await this.mcpClient.call("domain_query", {
         instruction: "Provide API information",
         input: String(toolCall.arguments.query ?? ""),
-        mode: "auto",
-      });
-      return result.response;
-    } else if (toolCall.toolName === "mochi_suggest_pattern") {
-      const result = await this.mcpClient.call("domain_query", {
-        instruction: `Suggest pattern for: ${toolCall.arguments.goal}`,
-        input: String(toolCall.arguments.context ?? ""),
         mode: "auto",
       });
       return result.response;
