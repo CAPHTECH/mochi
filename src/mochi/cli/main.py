@@ -727,5 +727,221 @@ def prepare(
     click.echo(f"Validation data saved to: {eval_path}")
 
 
+@main.command("prepare-v2")
+@click.option("--repo", "-r", required=True, help="Git repository URL or local path")
+@click.option("--output", "-o", default="./data", help="Output directory for training data")
+@click.option("--extensions", "-e", multiple=True, help="File extensions (default: .ts, .tsx)")
+@click.option("--project-name", "-n", default="project", help="Project name for context")
+@click.option("--min-length", type=int, default=30, help="Minimum output length")
+@click.option("--min-score", type=float, default=0.5, help="Minimum quality score (0-1)")
+@click.option("--use-ast/--no-ast", default=True, help="Use AST-based extraction (recommended)")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed statistics")
+def prepare_v2(
+    repo: str,
+    output: str,
+    extensions: tuple[str, ...],
+    project_name: str,
+    min_length: int,
+    min_score: float,
+    use_ast: bool,
+    verbose: bool,
+) -> None:
+    """Prepare high-quality training data (v2).
+
+    Improved data generation pipeline with:
+    - AST-based extraction: Extract syntactically complete patterns
+    - Quality filtering: Remove low-quality examples automatically
+    - Pattern diversity: Functions, classes, hooks, components, machines
+
+    \b
+    Examples:
+      # Basic usage
+      mochi prepare-v2 --repo ~/Workspace/my-project --output ./data
+
+      # With custom extensions
+      mochi prepare-v2 -r ~/project -o ./data -e .ts -e .tsx -e .js
+
+      # Stricter quality filtering
+      mochi prepare-v2 -r ~/project -o ./data --min-score 0.7 --min-length 50
+    """
+    import json
+    import random
+    from pathlib import Path
+
+    from ..data_generation.ast_extractor import (
+        ASTExtractor,
+        extract_patterns_from_repo,
+        patterns_to_training_data,
+    )
+    from ..data_generation.quality_filter import QualityFilter, filter_training_data
+    from ..ingestion.git_connector import GitConnector
+    from ..preprocessing.code_chunker import ChunkStrategy, CodeChunker
+    from ..data_generation.alpaca_converter import AlpacaConverter, create_training_dataset
+
+    click.echo(f"Preparing high-quality training data from: {repo}")
+    click.echo(f"  AST extraction: {'enabled' if use_ast else 'disabled'}")
+    click.echo(f"  Quality filter: min_length={min_length}, min_score={min_score}")
+
+    # Determine file extensions
+    file_extensions = list(extensions) if extensions else [".ts", ".tsx"]
+    click.echo(f"  Extensions: {file_extensions}")
+
+    # Connect to repo
+    if repo.startswith(("http://", "https://", "git@")):
+        target_path = Path(output) / "repo"
+        click.echo(f"Cloning to: {target_path}")
+        connector = GitConnector.clone(repo, target_path)
+        repo_path = target_path
+    else:
+        connector = GitConnector(repo)
+        repo_path = Path(repo).resolve()
+
+    all_examples: list[dict] = []
+
+    # Step 1: AST-based pattern extraction
+    if use_ast:
+        click.echo("\n[Step 1/3] AST-based pattern extraction...")
+        try:
+            patterns = extract_patterns_from_repo(
+                repo_path=repo_path,
+                extensions=file_extensions,
+            )
+            click.echo(f"  Extracted {len(patterns)} patterns")
+
+            # Count by type
+            type_counts: dict[str, int] = {}
+            for p in patterns:
+                type_counts[p.pattern_type] = type_counts.get(p.pattern_type, 0) + 1
+
+            if verbose:
+                click.echo("  Pattern types:")
+                for ptype, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+                    click.echo(f"    {ptype}: {count}")
+
+            # Convert to training format
+            ast_examples = patterns_to_training_data(patterns)
+            click.echo(f"  Generated {len(ast_examples)} AST-based examples")
+            all_examples.extend(ast_examples)
+
+        except Exception as e:
+            click.echo(f"  Warning: AST extraction failed: {e}", err=True)
+            click.echo("  Falling back to chunk-based extraction", err=True)
+
+    # Step 2: Traditional chunk-based extraction (complementary)
+    click.echo("\n[Step 2/3] Chunk-based extraction...")
+    files = connector.get_source_files(file_extensions)
+    click.echo(f"  Found {len(files)} source files")
+
+    chunker = CodeChunker()
+    all_chunks = []
+
+    for source_file in files:
+        chunks = chunker.chunk(
+            source_file.path,
+            source_file.content,
+            source_file.language,
+            strategy=ChunkStrategy.TOPLEVEL,
+        )
+        all_chunks.extend(chunks)
+
+    click.echo(f"  Created {len(all_chunks)} chunks")
+
+    # Convert chunks to examples
+    converter = AlpacaConverter(project_name)
+    chunk_examples = converter.convert_chunks(all_chunks)
+
+    # Convert to mlx-lm format
+    chunk_examples_formatted = []
+    for ex in chunk_examples:
+        if ex.input:
+            text = (
+                f"### Instruction:\n{ex.instruction}\n\n"
+                f"### Input:\n{ex.input}\n\n"
+                f"### Response:\n{ex.output}"
+            )
+        else:
+            text = (
+                f"### Instruction:\n{ex.instruction}\n\n"
+                f"### Response:\n{ex.output}"
+            )
+        chunk_examples_formatted.append({"text": text})
+
+    click.echo(f"  Generated {len(chunk_examples_formatted)} chunk-based examples")
+    all_examples.extend(chunk_examples_formatted)
+
+    # Step 3: Quality filtering
+    click.echo("\n[Step 3/3] Quality filtering...")
+    click.echo(f"  Total examples before filtering: {len(all_examples)}")
+
+    quality_filter = QualityFilter(
+        min_output_length=min_length,
+        min_score=min_score,
+    )
+
+    filtered_examples, stats = quality_filter.filter_with_stats(all_examples)
+
+    click.echo(f"  Accepted: {stats['accepted']}")
+    click.echo(f"  Rejected: {stats['rejected']}")
+    click.echo(f"  Acceptance rate: {stats['acceptance_rate']:.1%}")
+    click.echo(f"  Score mean: {stats['score_mean']:.2f}")
+
+    if verbose and stats['rejection_reasons']:
+        click.echo("  Rejection reasons:")
+        for reason, count in sorted(
+            stats['rejection_reasons'].items(), key=lambda x: -x[1]
+        )[:10]:
+            click.echo(f"    {reason}: {count}")
+
+    # Deduplicate
+    seen_hashes: set[int] = set()
+    unique_examples = []
+    for ex in filtered_examples:
+        h = hash(ex.get("text", ""))
+        if h not in seen_hashes:
+            seen_hashes.add(h)
+            unique_examples.append(ex)
+
+    click.echo(f"  After deduplication: {len(unique_examples)}")
+
+    # Shuffle and split
+    random.shuffle(unique_examples)
+    split_idx = int(len(unique_examples) * 0.9)
+
+    train_examples = unique_examples[:split_idx]
+    valid_examples = unique_examples[split_idx:]
+
+    # Save
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    train_path = output_dir / "train.jsonl"
+    valid_path = output_dir / "valid.jsonl"
+
+    with open(train_path, "w", encoding="utf-8") as f:
+        for ex in train_examples:
+            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+    with open(valid_path, "w", encoding="utf-8") as f:
+        for ex in valid_examples:
+            f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+
+    click.echo(f"\n{'='*50}")
+    click.echo(f"Training data: {train_path} ({len(train_examples)} examples)")
+    click.echo(f"Validation data: {valid_path} ({len(valid_examples)} examples)")
+
+    # Show sample statistics
+    if train_examples:
+        output_lengths = []
+        for ex in train_examples[:100]:
+            text = ex.get("text", "")
+            if "### Response:" in text:
+                output = text.split("### Response:")[-1]
+                output_lengths.append(len(output))
+
+        if output_lengths:
+            avg_len = sum(output_lengths) / len(output_lengths)
+            click.echo(f"Average output length (sample): {avg_len:.0f} chars")
+
+
 if __name__ == "__main__":
     main()
