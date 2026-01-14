@@ -735,6 +735,9 @@ def prepare(
 @click.option("--min-length", type=int, default=30, help="Minimum output length")
 @click.option("--min-score", type=float, default=0.5, help="Minimum quality score (0-1)")
 @click.option("--use-ast/--no-ast", default=True, help="Use AST-based extraction (recommended)")
+@click.option("--patterns-dir", "-p", default="~/.mochi/patterns", help="External pattern DB directory")
+@click.option("--generate-fim/--no-fim", default=True, help="Generate Fill-in-the-Middle examples")
+@click.option("--fim-ratio", type=float, default=0.3, help="Ratio of FIM examples to generate")
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed statistics")
 def prepare_v2(
     repo: str,
@@ -744,6 +747,9 @@ def prepare_v2(
     min_length: int,
     min_score: float,
     use_ast: bool,
+    patterns_dir: str,
+    generate_fim: bool,
+    fim_ratio: float,
     verbose: bool,
 ) -> None:
     """Prepare high-quality training data (v2).
@@ -752,6 +758,8 @@ def prepare_v2(
     - AST-based extraction: Extract syntactically complete patterns
     - Quality filtering: Remove low-quality examples automatically
     - Pattern diversity: Functions, classes, hooks, components, machines
+    - External pattern DB: Include package-specific patterns (XState, Valtio, etc.)
+    - FIM generation: Automatically generate Fill-in-the-Middle variants
 
     \b
     Examples:
@@ -763,6 +771,9 @@ def prepare_v2(
 
       # Stricter quality filtering
       mochi prepare-v2 -r ~/project -o ./data --min-score 0.7 --min-length 50
+
+      # Include external patterns
+      mochi prepare-v2 -r ~/project -o ./data --patterns-dir ~/.mochi/patterns
     """
     import json
     import random
@@ -786,6 +797,11 @@ def prepare_v2(
     file_extensions = list(extensions) if extensions else [".ts", ".tsx"]
     click.echo(f"  Extensions: {file_extensions}")
 
+    # Resolve patterns directory
+    patterns_path = Path(patterns_dir).expanduser()
+    has_patterns = patterns_path.exists()
+    click.echo(f"  External patterns: {'enabled' if has_patterns else 'disabled'}")
+
     # Connect to repo
     if repo.startswith(("http://", "https://", "git@")):
         target_path = Path(output) / "repo"
@@ -800,7 +816,7 @@ def prepare_v2(
 
     # Step 1: AST-based pattern extraction
     if use_ast:
-        click.echo("\n[Step 1/3] AST-based pattern extraction...")
+        click.echo("\n[Step 1/5] AST-based pattern extraction...")
         try:
             patterns = extract_patterns_from_repo(
                 repo_path=repo_path,
@@ -828,7 +844,7 @@ def prepare_v2(
             click.echo("  Falling back to chunk-based extraction", err=True)
 
     # Step 2: Traditional chunk-based extraction (complementary)
-    click.echo("\n[Step 2/3] Chunk-based extraction...")
+    click.echo("\n[Step 2/5] Chunk-based extraction...")
     files = connector.get_source_files(file_extensions)
     click.echo(f"  Found {len(files)} source files")
 
@@ -869,8 +885,47 @@ def prepare_v2(
     click.echo(f"  Generated {len(chunk_examples_formatted)} chunk-based examples")
     all_examples.extend(chunk_examples_formatted)
 
-    # Step 3: Quality filtering
-    click.echo("\n[Step 3/3] Quality filtering...")
+    # Step 3: Load external patterns from pattern DB
+    if has_patterns:
+        click.echo("\n[Step 3/5] Loading external patterns...")
+        pattern_count = 0
+        for jsonl_file in patterns_path.rglob("*.jsonl"):
+            try:
+                with open(jsonl_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            example = json.loads(line)
+                            all_examples.append(example)
+                            pattern_count += 1
+                category = jsonl_file.parent.name
+                pkg_name = jsonl_file.stem
+                if verbose:
+                    click.echo(f"    Loaded {pkg_name} from {category}/")
+            except Exception as e:
+                click.echo(f"  Warning: Failed to load {jsonl_file}: {e}", err=True)
+        click.echo(f"  Loaded {pattern_count} external patterns")
+    else:
+        click.echo("\n[Step 3/5] External patterns: skipped (directory not found)")
+
+    # Step 4: FIM generation
+    if generate_fim:
+        click.echo("\n[Step 4/5] Generating Fill-in-the-Middle examples...")
+        from ..data_generation.fim_generator import generate_fim_examples
+
+        fim_examples = generate_fim_examples(
+            examples=all_examples,
+            fim_ratio=fim_ratio,
+            max_variants=2,
+            seed=42,
+        )
+        click.echo(f"  Generated {len(fim_examples)} FIM examples (ratio: {fim_ratio})")
+        all_examples.extend(fim_examples)
+    else:
+        click.echo("\n[Step 4/5] FIM generation: skipped")
+
+    # Step 5: Quality filtering
+    click.echo("\n[Step 5/5] Quality filtering...")
     click.echo(f"  Total examples before filtering: {len(all_examples)}")
 
     quality_filter = QualityFilter(
