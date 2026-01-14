@@ -164,6 +164,10 @@ class MochiMCPServer:
                         "type": "boolean",
                         "description": "Auto-retry with conservative mode if confidence is low (default: true in auto mode)",
                     },
+                    "use_chatml": {
+                        "type": "boolean",
+                        "description": "Use ChatML format (recommended for document-to-code generation, longer outputs)",
+                    },
                 },
                 "required": ["instruction"],
             },
@@ -368,6 +372,7 @@ class MochiMCPServer:
         validate = args.get("validate", bool(context))  # Default to True if context provided
         mode_str = args.get("mode", "auto")  # P2: モード切替
         auto_retry = args.get("auto_retry", True)  # P2: 自動リトライ
+        use_chatml = args.get("use_chatml", False)  # ChatML for doc-to-code
 
         # P2: Import and convert mode string to enum
         from mochi.mcp.inference_mlx import GenerationMode
@@ -389,6 +394,7 @@ class MochiMCPServer:
                 temperature=temperature,
                 mode=mode,  # P2: Pass mode
                 auto_retry=auto_retry,  # P2: Pass auto_retry
+                use_chatml=use_chatml,  # ChatML for longer generation
             )
 
             response_data = {

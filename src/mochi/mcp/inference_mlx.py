@@ -92,7 +92,7 @@ class PromptTemplate:
     Optimized for code completion and generation tasks.
     """
 
-    # Alpaca-style templates (used during training)
+    # Alpaca-style templates (used during training for short completions)
     ALPACA_WITH_INPUT = """### Instruction:
 {instruction}
 
@@ -106,6 +106,21 @@ class PromptTemplate:
 {instruction}
 
 ### Response:
+"""
+
+    # ChatML format (Qwen3 native format, better for longer generation)
+    CHATML_WITH_INPUT = """<|im_start|>user
+{instruction}
+
+{input}
+<|im_end|>
+<|im_start|>assistant
+"""
+
+    CHATML_NO_INPUT = """<|im_start|>user
+{instruction}
+<|im_end|>
+<|im_start|>assistant
 """
 
     # Context-aware template (includes LSP context)
@@ -151,6 +166,7 @@ Include:
         input_text: str = "",
         context: str = "",
         use_alpaca: bool = True,
+        use_chatml: bool = False,
     ) -> str:
         """Format prompt based on task type.
 
@@ -160,10 +176,25 @@ Include:
             input_text: The input code/text
             context: LSP context (available methods, types, etc.)
             use_alpaca: Use Alpaca format (True) or minimal format (False)
+            use_chatml: Use ChatML format (overrides use_alpaca, better for long generation)
 
         Returns:
             Formatted prompt string
         """
+        # Build instruction based on task type if not provided
+        if not instruction:
+            instruction = cls._default_instruction(task_type)
+
+        # ChatML format - best for longer generation tasks
+        if use_chatml:
+            if input_text:
+                return cls.CHATML_WITH_INPUT.format(
+                    instruction=instruction,
+                    input=input_text,
+                )
+            else:
+                return cls.CHATML_NO_INPUT.format(instruction=instruction)
+
         if not use_alpaca:
             # Minimal format for pure code completion
             parts = []
@@ -172,10 +203,6 @@ Include:
             if input_text:
                 parts.append(input_text)
             return "\n".join(parts)
-
-        # Build instruction based on task type if not provided
-        if not instruction:
-            instruction = cls._default_instruction(task_type)
 
         # Use analysis template for ANALYSIS task type
         if task_type == TaskType.ANALYSIS:
@@ -652,6 +679,7 @@ class MLXInferenceEngine:
         temperature: float = 0.1,
         top_p: float = 0.5,
         use_alpaca_format: bool = True,
+        use_chatml: bool = False,  # ChatML format for longer generation
         mode: GenerationMode = GenerationMode.AUTO,  # P2: モード切替
         auto_retry: bool = True,  # P2: 低confidence時の自動リトライ
     ) -> InferenceResult:
@@ -667,6 +695,7 @@ class MLXInferenceEngine:
             temperature: Sampling temperature
             top_p: Nucleus sampling parameter
             use_alpaca_format: Use Alpaca format (True) or minimal (False)
+            use_chatml: Use ChatML format (better for longer generation like doc-to-code)
             mode: Generation mode (AUTO, CONSERVATIVE, CREATIVE)
             auto_retry: If True and mode=AUTO, retry with conservative params on low confidence
 
@@ -717,6 +746,7 @@ class MLXInferenceEngine:
             top_p=actual_top_p,
             repetition_penalty=rep_penalty,
             use_alpaca_format=use_alpaca_format,
+            use_chatml=use_chatml,
         )
 
         # P2: Auto-retry with conservative params if confidence is low
@@ -738,6 +768,7 @@ class MLXInferenceEngine:
                 top_p=conservative_params["top_p"],
                 repetition_penalty=conservative_params["repetition_penalty"],
                 use_alpaca_format=use_alpaca_format,
+                use_chatml=use_chatml,
             )
 
             # Use retry result if it has higher confidence
@@ -763,6 +794,7 @@ class MLXInferenceEngine:
         top_p: float,
         repetition_penalty: float,
         use_alpaca_format: bool,
+        use_chatml: bool = False,
     ) -> InferenceResult:
         """Internal: Single generation attempt without retry logic."""
         start_time = time.time()
@@ -774,6 +806,7 @@ class MLXInferenceEngine:
             input_text=input_text,
             context=context,
             use_alpaca=use_alpaca_format,
+            use_chatml=use_chatml,
         )
 
         # Create sampler with temperature and top_p
