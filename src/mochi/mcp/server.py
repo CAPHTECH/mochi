@@ -96,22 +96,13 @@ class MochiMCPServer:
         ToolDefinition(
             name="domain_query",
             description=(
-                "Query the domain-specific model trained on kiri codebase. "
-                "IMPORTANT: Model is trained for CODE COMPLETION, not Q&A. "
-                "Use code-completion style instructions like 'Fill in the code', "
-                "'Implement the following', 'Write the implementation'. "
-                "Provide code context in the 'input' field. "
-                "Example: instruction='Fill in the typescript code' + "
-                "input='// File: src/indexer/scanner.ts\\nfunction scanDirectory(' "
-                "WARNING: Output may contain incorrect schema/API names. "
-                "Model learns PATTERNS and STYLE, not exact implementation details. "
-                "Always verify table names, method names against actual kiri source. "
+                "Query the domain-specific model for code generation. "
+                "Supports both code completion and document-to-code generation. "
+                "Use code-style instructions: 'Implement the following', 'Write the implementation'. "
+                "WARNING: Output may contain incorrect schema/API names - verify against actual source. "
                 "MODES: 'auto' (default) retries with conservative params if confidence < 0.5, "
-                "'conservative' uses low temperature for precise output, "
-                "'creative' uses higher temperature for diverse suggestions. "
-                "RECOMMENDED: Use 'conservative' for short completions (1-line), "
-                "Use 'creative' for full function generation and error handling code. "
-                "Response includes 'mode_used' and 'retried' fields for transparency."
+                "'conservative' for precise short output, 'creative' for full implementations. "
+                "FORMAT: ChatML (default) for general use, Alpaca (use_chatml=false) for short completions."
             ),
             input_schema={
                 "type": "object",
@@ -166,7 +157,7 @@ class MochiMCPServer:
                     },
                     "use_chatml": {
                         "type": "boolean",
-                        "description": "Use ChatML format (recommended for document-to-code generation, longer outputs)",
+                        "description": "Use ChatML format (default: true, Qwen3 native). Set false for Alpaca format (short completions only)",
                     },
                 },
                 "required": ["instruction"],
@@ -372,7 +363,7 @@ class MochiMCPServer:
         validate = args.get("validate", bool(context))  # Default to True if context provided
         mode_str = args.get("mode", "auto")  # P2: モード切替
         auto_retry = args.get("auto_retry", True)  # P2: 自動リトライ
-        use_chatml = args.get("use_chatml", False)  # ChatML for doc-to-code
+        use_chatml = args.get("use_chatml", True)  # ChatML is default (Qwen3 native)
 
         # P2: Import and convert mode string to enum
         from mochi.mcp.inference_mlx import GenerationMode
