@@ -300,10 +300,11 @@ def _create_archive(
                 if item.is_file() and item.suffix in (".safetensors", ".json"):
                     shutil.copy2(item, pkg_dir / item.name)
 
-        # Copy adapter_config.json if exists
-        config_path = adapter_dir / "adapter_config.json"
-        if config_path.exists():
-            shutil.copy2(config_path, pkg_dir / "adapter_config.json")
+        # Merge adapter_config.json from both locations
+        # mlx-lm config (from adapter/) + mochi metadata (from root)
+        merged_config = _merge_adapter_configs(adapter_dir)
+        with open(pkg_dir / "adapter_config.json", "w") as f:
+            json.dump(merged_config, f, indent=2)
 
         # Create archive
         with tarfile.open(output_path, "w:gz") as tar:
@@ -334,12 +335,52 @@ def _create_directory_package(
             if item.is_file() and item.suffix in (".safetensors", ".json"):
                 shutil.copy2(item, output_path / item.name)
 
-    # Copy adapter_config.json
-    config_path = adapter_dir / "adapter_config.json"
-    if config_path.exists():
-        shutil.copy2(config_path, output_path / "adapter_config.json")
+    # Merge adapter_config.json from both locations
+    # mlx-lm config (from adapter/) + mochi metadata (from root)
+    merged_config = _merge_adapter_configs(adapter_dir)
+    with open(output_path / "adapter_config.json", "w") as f:
+        json.dump(merged_config, f, indent=2)
 
     return output_path
+
+
+def _merge_adapter_configs(adapter_dir: Path) -> dict[str, Any]:
+    """Merge adapter configs from mlx-lm output and mochi metadata.
+
+    mlx-lm requires: fine_tune_type, lora_parameters, num_layers
+    mochi uses: name, base_model, adapter_type, languages, etc.
+
+    Args:
+        adapter_dir: Adapter directory containing config files
+
+    Returns:
+        Merged config dictionary with all required fields
+    """
+    merged: dict[str, Any] = {}
+
+    # Load mlx-lm config from adapter subdirectory (has num_layers, lora_parameters)
+    mlx_config_path = adapter_dir / "adapter" / "adapter_config.json"
+    if mlx_config_path.exists():
+        with open(mlx_config_path) as f:
+            mlx_config = json.load(f)
+            merged.update(mlx_config)
+
+    # Load mochi config from root (has name, adapter_type, base_model, etc.)
+    mochi_config_path = adapter_dir / "adapter_config.json"
+    if mochi_config_path.exists():
+        with open(mochi_config_path) as f:
+            mochi_config = json.load(f)
+            # Only add mochi-specific fields, don't overwrite mlx-lm fields
+            for key in ["name", "adapter_type", "base_adapter", "project_root",
+                       "languages", "include_patterns", "exclude_patterns",
+                       "version", "description", "metadata"]:
+                if key in mochi_config and mochi_config[key] is not None:
+                    merged[key] = mochi_config[key]
+            # base_model from mochi config should match model from mlx config
+            if "base_model" in mochi_config:
+                merged["base_model"] = mochi_config["base_model"]
+
+    return merged
 
 
 def install_package(
